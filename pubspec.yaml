@@ -11,6 +11,7 @@ dependencies:
   adhan: ^2.0.0          # offline prayer-time calculation
   geolocator: ^13.0.1    # GPS
   shared_preferences: ^2.3.2
+  permission_handler: ^11.3.1
 flutter:
   uses-material-design: true
   assets:
