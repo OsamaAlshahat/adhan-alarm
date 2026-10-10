@@ -1,0 +1,18 @@
+name: adhan_alarm
+description: Normal and prayer-time alarms that work offline and in the background.
+publish_to: none
+version: 1.0.0
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  alarm: ^5.1.4          # exact, background alarms (Android + iOS)
+  adhan: ^2.0.0          # offline prayer-time calculation
+  geolocator: ^13.0.1    # GPS
+  shared_preferences: ^2.3.2
+  permission_handler: ^11.3.1
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/alarm.wav
