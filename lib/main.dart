@@ -529,9 +529,9 @@ Future<void> main() async {
         'daily_prayer_reschedule_task',
         dailyRescheduleTaskKey,
         frequency: const Duration(hours: 24),
-        existingWorkPolicy: ExistingWorkPolicy.keep,
+        existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
         constraints: Constraints(
-          networkType: NetworkType.not_required,
+          networkType: NetworkType.notRequired,
         ),
       );
     }
