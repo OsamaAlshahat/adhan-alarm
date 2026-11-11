@@ -14,21 +14,45 @@ jobs:
           channel: stable
       - name: Create Android and iOS projects
         run: flutter create . --platforms=android,ios --project-name adhan_alarm
-      - name: Configure Android permissions for Android 14 and 15
+      - name: Configure Android permissions and full-screen intent support
         run: |
           M=android/app/src/main/AndroidManifest.xml
-          P='<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>'
+          P='<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/><uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/><uses-permission android:name="android.permission.DISABLE_KEYGUARD"/>'
           sed -i "s|<application|$P<application|" $M
-          sed -i 's|<activity|<activity android:showWhenLocked="true" android:turnScreenOn="true"|' $M
+          sed -i 's|<activity|<activity android:showWhenLocked="true" android:turnScreenOn="true" android:inheritShowWhenLocked="true"|' $M
           for f in android/app/build.gradle.kts android/app/build.gradle; do
             [ -f "$f" ] && sed -i 's/flutter.minSdkVersion/23/' "$f" || true
             [ -f "$f" ] && sed -i 's/flutter.targetSdkVersion/35/' "$f" || true
           done
+          # Inject native lockscreen wake flags into MainActivity.kt
+          python3 -c "
+          import glob
+          files = glob.glob('android/app/src/main/**/MainActivity.kt', recursive=True)
+          if files:
+              with open(files[0], 'r') as f:
+                  pkg = [l for l in f if l.startswith('package ')][0]
+              content = f'''{pkg}
+          import android.os.Build
+          import android.os.Bundle
+          import io.flutter.embedding.android.FlutterActivity
+
+          class MainActivity: FlutterActivity() {{
+              override fun onCreate(savedInstanceState: Bundle?) {{
+                  super.onCreate(savedInstanceState)
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {{
+                      setShowWhenLocked(true)
+                      setTurnScreenOn(true)
+                  }}
+              }}
+          }}
+          '''
+              with open(files[0], 'w') as f:
+                  f.write(content)
+          "
       - name: Configure iOS background modes and permissions for iOS 17 and 18
         run: |
           PLIST=ios/Runner/Info.plist
           if [ -f "$PLIST" ]; then
-            # Insert UIBackgroundModes (audio, fetch, processing) and location descriptions
             python3 -c "
           import plistlib
           with open('$PLIST', 'rb') as f:

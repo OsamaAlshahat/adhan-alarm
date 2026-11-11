@@ -439,6 +439,12 @@ Future<void> reschedule() async {
       }
 
       final titleText = a.label.isNotEmpty ? a.label : (a.prayer ? '${a.mins} min ${a.p}' : 'Alarm');
+      final isAr = st.language == 'ar' || (st.language == 'system' && WidgetsBinding.instance.platformDispatcher.locale.languageCode == 'ar');
+      final stopText = isAr ? 'إيقاف' : 'Stop';
+      final bodyText = a.notify
+          ? '${formatTime(at)} · ${(isAr ? "اضغط للغفوة أو الفتح" : "Tap to Snooze or Open")}'
+          : '';
+
       await Alarm.set(alarmSettings: AlarmSettings(
         id: a.id * 100 + i,
         dateTime: at,
@@ -450,8 +456,8 @@ Future<void> reschedule() async {
         volumeSettings: VolumeSettings.fixed(volume: a.sound ? 0.9 : 0.0, volumeEnforced: a.sound),
         notificationSettings: NotificationSettings(
           title: a.notify ? titleText : '',
-          body: a.notify ? formatTime(at) : '',
-          stopButton: a.notify ? 'Stop' : null,
+          body: bodyText,
+          stopButton: a.notify ? stopText : null,
         ),
       ));
 
@@ -575,6 +581,7 @@ Future<void> main() async {
   if (Platform.isAndroid) {
     await Permission.scheduleExactAlarm.request();
     await Permission.ignoreBatteryOptimizations.request();
+    await Permission.systemAlertWindow.request();
   }
 
   await reschedule();
@@ -953,6 +960,55 @@ class _H extends State<Home> {
             reschedule();
           },
         ),
+        if (Platform.isAndroid) ...[
+          const SizedBox(height: 24),
+          Text(Tr.t(context, 'Alarm & Lockscreen permissions', 'أذونات المنبه وشاشة القفل'), style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Card(
+            margin: EdgeInsets.zero,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    Tr.t(
+                      context,
+                      'To wake up the screen and display the full-screen alarm over your lock screen on modern Android devices, please allow "Full-screen notifications" and "Appear on top" in app settings.',
+                      'لتشغيل الشاشة وعرض منبه الأذان ملء الشاشة على شاشة القفل في أجهزة أندرويد الحديثة، يرجى تفعيل إذن "الإشعارات ملء الشاشة" و"الظهور في المقدمة" من إعدادات التطبيق.',
+                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.tonalIcon(
+                        icon: const Icon(Icons.settings, size: 18),
+                        label: Text(Tr.t(context, 'Open App Settings', 'فتح إعدادات التطبيق')),
+                        onPressed: () => openAppSettings(),
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.battery_charging_full, size: 18),
+                        label: Text(Tr.t(context, 'Battery optimization', 'استثناء توفير الطاقة')),
+                        onPressed: () async {
+                          await Permission.ignoreBatteryOptimizations.request();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(Tr.t(context, 'Battery optimization requested', 'تم طلب استثناء توفير الطاقة'))),
+                            );
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
