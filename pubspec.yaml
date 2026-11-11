@@ -7,6 +7,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   alarm: ^5.1.4          # exact, background alarms (Android + iOS)
   adhan: ^2.0.0          # offline prayer-time calculation
   geolocator: ^13.0.1    # GPS
@@ -18,3 +20,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/alarm.wav
+    - assets/placeholder.png
