@@ -36,6 +36,26 @@ const cities = <String, List<List<Object>>>{
   'United States': [['New York', 40.71, -74.01]],
 };
 
+const weekDaysAr = [
+  {'day': DateTime.saturday, 'name': 'السبت', 'short': 'سبت'},
+  {'day': DateTime.sunday, 'name': 'الأحد', 'short': 'أحد'},
+  {'day': DateTime.monday, 'name': 'الإثنين', 'short': 'إث'},
+  {'day': DateTime.tuesday, 'name': 'الثلاثاء', 'short': 'ثل'},
+  {'day': DateTime.wednesday, 'name': 'الأربعاء', 'short': 'أر'},
+  {'day': DateTime.thursday, 'name': 'الخميس', 'short': 'خم'},
+  {'day': DateTime.friday, 'name': 'الجمعة', 'short': 'جم'},
+];
+
+const weekDaysEn = [
+  {'day': DateTime.monday, 'name': 'Monday', 'short': 'Mon'},
+  {'day': DateTime.tuesday, 'name': 'Tuesday', 'short': 'Tue'},
+  {'day': DateTime.wednesday, 'name': 'Wednesday', 'short': 'Wed'},
+  {'day': DateTime.thursday, 'name': 'Thursday', 'short': 'Thu'},
+  {'day': DateTime.friday, 'name': 'Friday', 'short': 'Fri'},
+  {'day': DateTime.saturday, 'name': 'Saturday', 'short': 'Sat'},
+  {'day': DateTime.sunday, 'name': 'Sunday', 'short': 'Sun'},
+];
+
 /// Localization helper for English and Arabic with automatic fallback
 class Tr {
   static bool isAr(BuildContext? context) {
@@ -136,7 +156,8 @@ class Al {
   int mins;
   String label;
   bool on;
-  bool once;
+  String repeatMode; // 'once' (default), 'daily', 'custom'
+  List<int> days;    // 1 (Monday) .. 7 (Sunday)
   bool notify, vibrate, sound;
   String? soundPath, soundName;
 
@@ -149,13 +170,17 @@ class Al {
     this.mins = 10,
     this.label = '',
     this.on = true,
-    this.once = false,
+    this.repeatMode = 'once', // Default: only one time
+    List<int>? days,
     this.notify = true,
     this.vibrate = true,
     this.sound = true,
     this.soundPath,
     this.soundName,
-  });
+  }) : days = days ?? [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday];
+
+  bool get once => repeatMode == 'once';
+  set once(bool v) => repeatMode = v ? 'once' : 'daily';
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -166,7 +191,8 @@ class Al {
     'mins': mins,
     'label': label,
     'on': on,
-    'once': once,
+    'repeatMode': repeatMode,
+    'days': days,
     'notify': notify,
     'vibrate': vibrate,
     'sound': sound,
@@ -174,22 +200,31 @@ class Al {
     'soundName': soundName,
   };
 
-  factory Al.from(Map<String, dynamic> j) => Al(
-    id: j['id'],
-    prayer: j['prayer'] ?? false,
-    minutes: j['minutes'] ?? 420,
-    p: j['p'] ?? 'fajr',
-    sign: j['sign'] ?? 1,
-    mins: j['mins'] ?? 10,
-    label: j['label'] ?? '',
-    on: j['on'] ?? true,
-    once: j['once'] ?? false,
-    notify: j['notify'] ?? true,
-    vibrate: j['vibrate'] ?? true,
-    sound: j['sound'] ?? true,
-    soundPath: j['soundPath'],
-    soundName: j['soundName'],
-  );
+  factory Al.from(Map<String, dynamic> j) {
+    final mode = j['repeatMode'] as String? ?? (j['once'] == false ? 'daily' : 'once');
+    final rawDays = j['days'] as List?;
+    final parsedDays = rawDays != null
+        ? rawDays.map((e) => (e as num).toInt()).toList()
+        : <int>[DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday];
+
+    return Al(
+      id: j['id'],
+      prayer: j['prayer'] ?? false,
+      minutes: j['minutes'] ?? 420,
+      p: j['p'] ?? 'fajr',
+      sign: j['sign'] ?? 1,
+      mins: j['mins'] ?? 10,
+      label: j['label'] ?? '',
+      on: j['on'] ?? true,
+      repeatMode: mode,
+      days: parsedDays,
+      notify: j['notify'] ?? true,
+      vibrate: j['vibrate'] ?? true,
+      sound: j['sound'] ?? true,
+      soundPath: j['soundPath'],
+      soundName: j['soundName'],
+    );
+  }
 
   Al copy() => Al.from(jsonDecode(jsonEncode(toJson())));
 
@@ -202,6 +237,30 @@ class Al {
     }
     final rel = sign < 0 ? (ar ? 'قبل' : 'before') : (ar ? 'بعد' : 'after');
     return ar ? '$rel $pName بـ $mins دقيقة' : '$mins min $rel $pName';
+  }
+
+  String repeatText(BuildContext context) {
+    final ar = Tr.isAr(context);
+    if (repeatMode == 'once') return ar ? 'مرة واحدة' : 'Only once';
+    if (repeatMode == 'daily') return ar ? 'كل يوم' : 'Every day';
+    if (days.length == 7) return ar ? 'كل يوم' : 'Every day';
+    if (days.isEmpty) return ar ? 'لم يتم تحديد أيام' : 'No days';
+
+    final shortMap = <int, String>{
+      DateTime.saturday: ar ? 'سبت' : 'Sat',
+      DateTime.sunday: ar ? 'أحد' : 'Sun',
+      DateTime.monday: ar ? 'إث' : 'Mon',
+      DateTime.tuesday: ar ? 'ثل' : 'Tue',
+      DateTime.wednesday: ar ? 'أر' : 'Wed',
+      DateTime.thursday: ar ? 'خم' : 'Thu',
+      DateTime.friday: ar ? 'جم' : 'Fri',
+    };
+    final orderedList = (ar ? weekDaysAr : weekDaysEn)
+        .map((x) => x['day'] as int)
+        .where((d) => days.contains(d))
+        .map((d) => shortMap[d] ?? '$d');
+
+    return orderedList.join(ar ? '، ' : ', ');
   }
 
   String actions(BuildContext context) {
@@ -286,8 +345,15 @@ Future<void> reschedule() async {
     final path = (a.soundPath != null && File(a.soundPath!).existsSync()) ? a.soundPath! : 'assets/alarm.wav';
     var count = 0;
     for (var i = 0; i < 14; i++) {
-      final at = ringAt(a, now.add(Duration(days: i)));
+      final targetDate = now.add(Duration(days: i));
+      final at = ringAt(a, targetDate);
       if (!at.isAfter(now)) continue;
+
+      // Filter by specific days of week if customized
+      if (a.repeatMode == 'custom' && !a.days.contains(targetDate.weekday)) {
+        continue;
+      }
+
       final titleText = a.label.isNotEmpty ? a.label : (a.prayer ? '${a.mins} min ${a.p}' : 'Alarm');
       await Alarm.set(alarmSettings: AlarmSettings(
         id: a.id * 100 + i,
@@ -304,7 +370,9 @@ Future<void> reschedule() async {
           stopButton: a.notify ? 'Stop' : null,
         ),
       ));
-      if (a.once && ++count == 1) break;
+
+      // 'once' mode only schedules the first upcoming occurrence
+      if (a.repeatMode == 'once' && ++count == 1) break;
     }
   }
 }
@@ -317,7 +385,7 @@ void showRing(AlarmSettings s) {
   if (ringing.contains(s.id)) return;
   ringing.add(s.id);
   final a = alarms.where((x) => x.id == s.id ~/ 100).firstOrNull;
-  if (a != null && a.once) {
+  if (a != null && a.repeatMode == 'once') {
     a.on = false;
     save();
   }
@@ -618,7 +686,7 @@ class _H extends State<Home> {
                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w400),
               ),
               subtitle: Text(
-                '${a.label.isEmpty ? '' : '${a.label} · '}${a.desc(context)} · ${a.once ? Tr.t(context, 'Once', 'مرة واحدة') : Tr.t(context, 'Daily', 'يومياً')}\n${a.actions(context)}',
+                '${a.label.isEmpty ? '' : '${a.label} · '}${a.desc(context)} · ${a.repeatText(context)}\n${a.actions(context)}',
               ),
               isThreeLine: true,
               trailing: Row(
@@ -835,7 +903,9 @@ class _H extends State<Home> {
       useSafeArea: true,
       builder: (_) => StatefulBuilder(
         builder: (ctx, set) {
-          final ok = e.sound || e.vibrate || e.notify;
+          final hasValidDays = e.repeatMode != 'custom' || e.days.isNotEmpty;
+          final ok = (e.sound || e.vibrate || e.notify) && hasValidDays;
+
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
             child: SafeArea(
@@ -914,6 +984,55 @@ class _H extends State<Home> {
                       decoration: InputDecoration(labelText: Tr.t(ctx, 'Label (optional)', 'التسمية (اختياري)')),
                     ),
                     const SizedBox(height: 14),
+
+                    // =========================================================
+                    // REPEAT OPTIONS: Only once (default), Every day, Specific days
+                    // =========================================================
+                    Text(Tr.t(ctx, 'Repeat', 'التكرار'), style: Theme.of(ctx).textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    SegmentedButton<String>(
+                      segments: [
+                        ButtonSegment(value: 'once', label: Text(Tr.t(ctx, 'Only once', 'مرة واحدة'))),
+                        ButtonSegment(value: 'daily', label: Text(Tr.t(ctx, 'Every day', 'كل يوم'))),
+                        ButtonSegment(value: 'custom', label: Text(Tr.t(ctx, 'Specific days', 'أيام محددة'))),
+                      ],
+                      selected: {e.repeatMode},
+                      onSelectionChanged: (s) => set(() => e.repeatMode = s.first),
+                    ),
+                    if (e.repeatMode == 'custom') ...[
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final item in (Tr.isAr(ctx) ? weekDaysAr : weekDaysEn))
+                            FilterChip(
+                              label: Text(item['name'] as String),
+                              selected: e.days.contains(item['day']),
+                              onSelected: (selected) {
+                                set(() {
+                                  final d = item['day'] as int;
+                                  if (selected) {
+                                    if (!e.days.contains(d)) e.days.add(d);
+                                  } else {
+                                    e.days.remove(d);
+                                  }
+                                });
+                              },
+                            ),
+                        ],
+                      ),
+                      if (e.days.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            Tr.t(ctx, 'Please select at least one day', 'يرجى اختيار يوم واحد على الأقل'),
+                            style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 12),
+                          ),
+                        ),
+                    ],
+
+                    const SizedBox(height: 14),
                     Text(Tr.t(ctx, 'What should the alarm do?', 'ماذا يفعل المنبه عند الرنين؟'), style: Theme.of(ctx).textTheme.titleSmall),
                     const SizedBox(height: 6),
                     Wrap(
@@ -940,7 +1059,7 @@ class _H extends State<Home> {
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
-                          Tr.t(ctx, 'Choose at least one action', 'اختر إجراءً واحداً على الأقل'),
+                          Tr.t(ctx, 'Choose at least one action and valid days', 'اختر إجراءً واحداً على الأقل وحدد الأيام'),
                           style: TextStyle(color: Theme.of(ctx).colorScheme.error),
                         ),
                       ),
@@ -961,13 +1080,7 @@ class _H extends State<Home> {
                               ),
                         onTap: () => pickSound(e, set),
                       ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(Tr.t(ctx, 'Repeat every day', 'تكرار كل يوم')),
-                      value: !e.once,
-                      onChanged: (v) => set(() => e.once = !v),
-                    ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
