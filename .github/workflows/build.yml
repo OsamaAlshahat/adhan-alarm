@@ -12,18 +12,35 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - name: Create Android project
-        run: flutter create . --platforms=android --project-name adhan_alarm
-      - name: Add permissions and minSdk
+      - name: Create Android and iOS projects
+        run: flutter create . --platforms=android,ios --project-name adhan_alarm
+      - name: Configure Android permissions for Android 14 and 15
         run: |
           M=android/app/src/main/AndroidManifest.xml
-          P='<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>'
+          P='<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>'
           sed -i "s|<application|$P<application|" $M
           sed -i 's|<activity|<activity android:showWhenLocked="true" android:turnScreenOn="true"|' $M
           for f in android/app/build.gradle.kts android/app/build.gradle; do
             [ -f "$f" ] && sed -i 's/flutter.minSdkVersion/23/' "$f" || true
+            [ -f "$f" ] && sed -i 's/flutter.targetSdkVersion/35/' "$f" || true
           done
-      - name: Force compileSdk 36 for all plugins
+      - name: Configure iOS background modes and permissions for iOS 17 and 18
+        run: |
+          PLIST=ios/Runner/Info.plist
+          if [ -f "$PLIST" ]; then
+            # Insert UIBackgroundModes (audio, fetch, processing) and location descriptions
+            python3 -c "
+          import plistlib
+          with open('$PLIST', 'rb') as f:
+              data = plistlib.load(f)
+          data['UIBackgroundModes'] = ['audio', 'fetch', 'processing']
+          data['NSLocationWhenInUseUsageDescription'] = 'Adhan Alarm needs your location to calculate accurate offline prayer times.'
+          data['BGTaskSchedulerPermittedIdentifiers'] = ['dev.fluttercommunity.workmanager.iOSBackgroundProcessingTask', 'dev.fluttercommunity.workmanager.iOSBackgroundFetchTask', 'daily_prayer_reschedule_task']
+          with open('$PLIST', 'wb') as f:
+              plistlib.dump(data, f)
+          "
+          fi
+      - name: Force compileSdk 36 for all Android plugins
         run: |
           mkdir -p ~/.gradle/init.d
           cat > ~/.gradle/init.d/sdk.gradle <<'EOF'

@@ -509,25 +509,32 @@ Future<void> main() async {
 
   await Alarm.init();
   await Permission.notification.request();
-  await Permission.scheduleExactAlarm.request();
-  await Permission.ignoreBatteryOptimizations.request();
+
+  // Android-specific permissions for Android 13, 14, and 15
+  if (Platform.isAndroid) {
+    await Permission.scheduleExactAlarm.request();
+    await Permission.ignoreBatteryOptimizations.request();
+  }
+
   await reschedule();
 
-  // Initialize periodic background worker to keep 14-day schedule perpetually replenished
+  // Initialize periodic background worker (guarded for Android & iOS)
   try {
-    await Workmanager().initialize(
-      callbackDispatcher,
-      isInDebugMode: false,
-    );
-    await Workmanager().registerPeriodicTask(
-      'daily_prayer_reschedule_task',
-      dailyRescheduleTaskKey,
-      frequency: const Duration(hours: 24),
-      existingWorkPolicy: ExistingWorkPolicy.keep,
-      constraints: Constraints(
-        networkType: NetworkType.not_required,
-      ),
-    );
+    if (Platform.isAndroid || Platform.isIOS) {
+      await Workmanager().initialize(
+        callbackDispatcher,
+        isInDebugMode: false,
+      );
+      await Workmanager().registerPeriodicTask(
+        'daily_prayer_reschedule_task',
+        dailyRescheduleTaskKey,
+        frequency: const Duration(hours: 24),
+        existingWorkPolicy: ExistingWorkPolicy.keep,
+        constraints: Constraints(
+          networkType: NetworkType.not_required,
+        ),
+      );
+    }
   } catch (e) {
     debugPrint('Workmanager init: $e');
   }
