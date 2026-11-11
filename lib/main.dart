@@ -140,6 +140,45 @@ class Tr {
       default: return c;
     }
   }
+
+  static String city(BuildContext context, String ct) {
+    final ar = isAr(context);
+    if (!ar) return ct;
+    switch (ct) {
+      case 'Alexandria': return 'الإسكندرية';
+      case 'Cairo': return 'القاهرة';
+      case 'Giza': return 'الجيزة';
+      case 'Mansoura': return 'المنصورة';
+      case 'Tanta': return 'طنطا';
+      case 'Port Said': return 'بورسعيد';
+      case 'Suez': return 'السويس';
+      case 'Luxor': return 'الأقصر';
+      case 'Aswan': return 'أسوان';
+      case 'Assiut': return 'أسيوط';
+      case 'Makkah': return 'مكة المكرمة';
+      case 'Madinah': return 'المدينة المنورة';
+      case 'Riyadh': return 'الرياض';
+      case 'Jeddah': return 'جدة';
+      case 'Dubai': return 'دبي';
+      case 'Abu Dhabi': return 'أبوظبي';
+      case 'Amman': return 'عمان';
+      case 'Jerusalem': return 'القدس';
+      case 'Kuwait City': return 'مدينة الكويت';
+      case 'Doha': return 'الدوحة';
+      case 'Baghdad': return 'بغداد';
+      case 'Casablanca': return 'الدار البيضاء';
+      case 'Algiers': return 'الجزائر العاصمة';
+      case 'Tunis': return 'تونس العاصمة';
+      case 'Istanbul': return 'إسطنبول';
+      case 'Karachi': return 'كراتشي';
+      case 'Jakarta': return 'جاكرتا';
+      case 'London': return 'لندن';
+      case 'New York': return 'نيويورك';
+      case 'My location': return 'موقعي الحالي';
+      case 'GPS': return 'GPS';
+      default: return ct;
+    }
+  }
 }
 
 class Settings {
@@ -258,8 +297,30 @@ class Al {
     if (mins == 0) {
       return ar ? 'في موعد صلاة $pName' : 'At $pName';
     }
-    final rel = sign < 0 ? (ar ? 'قبل' : 'before') : (ar ? 'بعد' : 'after');
-    return ar ? '$rel $pName بـ $mins دقيقة' : '$mins min $rel $pName';
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    String durText;
+    if (ar) {
+      if (h > 0 && m > 0) {
+        durText = '$h س و $m د';
+      } else if (h > 0) {
+        durText = '$h ساعة';
+      } else {
+        durText = '$m دقيقة';
+      }
+      final rel = sign < 0 ? 'قبل' : 'بعد';
+      return '$rel صلاة $pName بـ $durText';
+    } else {
+      if (h > 0 && m > 0) {
+        durText = '${h}h ${m}m';
+      } else if (h > 0) {
+        durText = '${h}h';
+      } else {
+        durText = '$m min';
+      }
+      final rel = sign < 0 ? 'before' : 'after';
+      return '$durText $rel $pName';
+    }
   }
 
   String repeatText(BuildContext context) {
@@ -679,7 +740,7 @@ class _H extends State<Home> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${Tr.country(c, st.country)} · ${st.city}',
+                    '${Tr.country(c, st.country)} · ${Tr.city(c, st.city)}',
                     style: Theme.of(c).textTheme.bodySmall?.copyWith(color: Theme.of(c).colorScheme.outline),
                   ),
                 ],
@@ -854,7 +915,7 @@ class _H extends State<Home> {
           decoration: InputDecoration(labelText: Tr.t(context, 'City', 'المدينة'), prefixIcon: const Icon(Icons.location_city)),
           items: [
             for (final x in list)
-              DropdownMenuItem(value: x[0] as String, child: Text(x[0] as String)),
+              DropdownMenuItem(value: x[0] as String, child: Text(Tr.city(context, x[0] as String))),
           ],
           onChanged: (v) {
             if (v == null) return;
@@ -926,7 +987,7 @@ class _H extends State<Home> {
     });
     save();
     await reschedule();
-    m.showSnackBar(SnackBar(content: Text('${Tr.t(context, "Location set: ", "تم تحديد الموقع: ")}${st.city}')));
+    m.showSnackBar(SnackBar(content: Text('${Tr.t(context, "Location set: ", "تم تحديد الموقع: ")}${Tr.city(context, st.city)}')));
   }
 
   Future<void> pickSound(Al e, void Function(void Function()) set) async {
@@ -943,10 +1004,40 @@ class _H extends State<Home> {
     });
   }
 
+  Future<int?> showNumberInputDialog(BuildContext context, {required String title, required int current, required int max}) async {
+    final controller = TextEditingController(text: '$current');
+    return showDialog<int>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(hintText: '0 - $max'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dCtx), child: Text(Tr.t(dCtx, 'Cancel', 'إلغاء'))),
+          FilledButton(
+            onPressed: () {
+              final val = int.tryParse(controller.text);
+              if (val != null && val >= 0 && val <= max) {
+                Navigator.pop(dCtx, val);
+              }
+            },
+            child: Text(Tr.t(dCtx, 'OK', 'موافق')),
+          ),
+        ],
+      ),
+    );
+  }
+
   void openSheet([Al? existing]) {
     final e = existing?.copy() ?? Al(id: (alarms.isEmpty ? 0 : alarms.map((x) => x.id).reduce(max)) + 1);
     final lbl = TextEditingController(text: e.label);
-    final mins = TextEditingController(text: '${e.mins}');
+    int offsetHours = e.mins ~/ 60;
+    int offsetMinutes = e.mins % 60;
+    int signChoice = e.mins == 0 ? 0 : e.sign;
 
     showModalBottomSheet(
       context: context,
@@ -1001,32 +1092,218 @@ class _H extends State<Home> {
                     if (e.prayer) ...[
                       DropdownButtonFormField<String>(
                         value: e.p,
-                        decoration: InputDecoration(labelText: Tr.t(ctx, '1. Prayer', '1. الصلاة')),
+                        decoration: InputDecoration(
+                          labelText: Tr.t(ctx, 'Prayer', 'الصلاة'),
+                          prefixIcon: const Icon(Icons.mosque),
+                        ),
                         items: [
                           for (final p in prayers)
                             DropdownMenuItem(value: p, child: Text(Tr.prayer(ctx, p))),
                         ],
                         onChanged: (v) => set(() => e.p = v!),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
+
+                      Text(Tr.t(ctx, 'Alarm timing', 'توقيت التنبيه بالنسبة للصلاة'), style: Theme.of(ctx).textTheme.titleSmall),
+                      const SizedBox(height: 8),
+
                       SegmentedButton<int>(
                         segments: [
                           ButtonSegment(value: -1, label: Text(Tr.t(ctx, '− Before', '− قبل'))),
+                          ButtonSegment(value: 0, label: Text(Tr.t(ctx, 'At prayer', 'في الموعد'))),
                           ButtonSegment(value: 1, label: Text(Tr.t(ctx, '+ After', '+ بعد'))),
                         ],
-                        selected: {e.sign},
-                        onSelectionChanged: (s) => set(() => e.sign = s.first),
+                        selected: {signChoice},
+                        onSelectionChanged: (s) {
+                          set(() {
+                            signChoice = s.first;
+                            if (signChoice == 0) {
+                              offsetHours = 0;
+                              offsetMinutes = 0;
+                              e.mins = 0;
+                              e.sign = 1;
+                            } else {
+                              e.sign = signChoice;
+                              if (e.mins == 0) {
+                                offsetMinutes = 10;
+                                e.mins = 10;
+                              }
+                            }
+                          });
+                        },
                       ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: mins,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(labelText: Tr.t(ctx, '3. Minutes', '3. الدقائق')),
-                        onChanged: (v) => set(() => e.mins = int.tryParse(v) ?? 0),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text('${Tr.t(ctx, "Rings today at ", "سيرن اليوم في ")}${formatTime(ringAt(e, DateTime.now()), ctx)}'),
+
+                      if (signChoice != 0) ...[
+                        const SizedBox(height: 12),
+                        // Quick Presets
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final preset in [
+                              {'label': '5m', 'h': 0, 'm': 5},
+                              {'label': '10m', 'h': 0, 'm': 10},
+                              {'label': '15m', 'h': 0, 'm': 15},
+                              {'label': '30m', 'h': 0, 'm': 30},
+                              {'label': '45m', 'h': 0, 'm': 45},
+                              {'label': '1h', 'h': 1, 'm': 0},
+                              {'label': '1h 30m', 'h': 1, 'm': 30},
+                              {'label': '2h', 'h': 2, 'm': 0},
+                            ])
+                              ActionChip(
+                                label: Text(preset['label'] as String),
+                                avatar: (offsetHours == preset['h'] && offsetMinutes == preset['m']) ? const Icon(Icons.check, size: 16) : null,
+                                onPressed: () {
+                                  set(() {
+                                    offsetHours = preset['h'] as int;
+                                    offsetMinutes = preset['m'] as int;
+                                    e.mins = offsetHours * 60 + offsetMinutes;
+                                  });
+                                },
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Hours & Minutes Picker Card
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.5)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              // Hours Stepper
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(Tr.t(ctx, 'Hours', 'ساعات'), style: Theme.of(ctx).textTheme.labelMedium),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton.filledTonal(
+                                        icon: const Icon(Icons.remove, size: 18),
+                                        onPressed: offsetHours > 0 ? () => set(() {
+                                          offsetHours--;
+                                          e.mins = offsetHours * 60 + offsetMinutes;
+                                        }) : null,
+                                      ),
+                                      InkWell(
+                                        borderRadius: BorderRadius.circular(8),
+                                        onTap: () async {
+                                          final val = await showNumberInputDialog(ctx, title: Tr.t(ctx, 'Hours', 'ساعات'), current: offsetHours, max: 12);
+                                          if (val != null) set(() { offsetHours = val; e.mins = offsetHours * 60 + offsetMinutes; });
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                          child: Text(
+                                            '$offsetHours',
+                                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton.filledTonal(
+                                        icon: const Icon(Icons.add, size: 18),
+                                        onPressed: offsetHours < 12 ? () => set(() {
+                                          offsetHours++;
+                                          e.mins = offsetHours * 60 + offsetMinutes;
+                                        }) : null,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+
+                              Padding(
+                                padding: const EdgeInsets.only(top: 18),
+                                child: Text(':', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Theme.of(ctx).colorScheme.outline)),
+                              ),
+
+                              // Minutes Stepper
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(Tr.t(ctx, 'Minutes', 'دقائق'), style: Theme.of(ctx).textTheme.labelMedium),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton.filledTonal(
+                                        icon: const Icon(Icons.remove, size: 18),
+                                        onPressed: (offsetMinutes > 0 || offsetHours > 0) ? () => set(() {
+                                          if (offsetMinutes > 0) {
+                                            offsetMinutes--;
+                                          } else if (offsetHours > 0) {
+                                            offsetHours--;
+                                            offsetMinutes = 59;
+                                          }
+                                          e.mins = offsetHours * 60 + offsetMinutes;
+                                        }) : null,
+                                      ),
+                                      InkWell(
+                                        borderRadius: BorderRadius.circular(8),
+                                        onTap: () async {
+                                          final val = await showNumberInputDialog(ctx, title: Tr.t(ctx, 'Minutes', 'دقائق'), current: offsetMinutes, max: 59);
+                                          if (val != null) set(() { offsetMinutes = val; e.mins = offsetHours * 60 + offsetMinutes; });
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                          child: Text(
+                                            offsetMinutes.toString().padLeft(2, '0'),
+                                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton.filledTonal(
+                                        icon: const Icon(Icons.add, size: 18),
+                                        onPressed: () => set(() {
+                                          if (offsetMinutes < 59) {
+                                            offsetMinutes++;
+                                          } else if (offsetHours < 12) {
+                                            offsetHours++;
+                                            offsetMinutes = 0;
+                                          }
+                                          e.mins = offsetHours * 60 + offsetMinutes;
+                                        }),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      // Live calculation preview
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(top: 8, bottom: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).colorScheme.primaryContainer.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.access_time_filled, size: 18, color: Theme.of(ctx).colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${Tr.t(ctx, "Rings today at ", "سيرن اليوم في ")}${formatTime(ringAt(e, DateTime.now()), ctx)} (${e.desc(ctx)})',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: Theme.of(ctx).colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -1138,7 +1415,15 @@ class _H extends State<Home> {
                         onPressed: !ok
                             ? null
                             : () async {
-                                e.mins = int.tryParse(mins.text) ?? e.mins;
+                                if (e.prayer) {
+                                  if (signChoice == 0) {
+                                    e.mins = 0;
+                                    e.sign = 1;
+                                  } else {
+                                    e.sign = signChoice;
+                                    e.mins = offsetHours * 60 + offsetMinutes;
+                                  }
+                                }
                                 e.label = lbl.text.trim();
                                 e.on = true;
                                 if (existing != null) {
