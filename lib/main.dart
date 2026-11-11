@@ -11,6 +11,29 @@ import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workmanager/workmanager.dart';
+
+const dailyRescheduleTaskKey = 'adhan_alarm_daily_reschedule';
+
+/// Background task dispatcher executed by WorkManager (even when app is terminated)
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    try {
+      WidgetsFlutterBinding.ensureInitialized();
+      prefs = await SharedPreferences.getInstance();
+      final s = prefs.getString('st');
+      if (s != null) st = Settings.from(jsonDecode(s));
+      final l = prefs.getString('al');
+      if (l != null) alarms = (jsonDecode(l) as List).map((e) => Al.from(e)).toList();
+      await Alarm.init();
+      await reschedule();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  });
+}
 
 const prayers = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
 
@@ -487,7 +510,28 @@ Future<void> main() async {
   await Alarm.init();
   await Permission.notification.request();
   await Permission.scheduleExactAlarm.request();
+  await Permission.ignoreBatteryOptimizations.request();
   await reschedule();
+
+  // Initialize periodic background worker to keep 14-day schedule perpetually replenished
+  try {
+    await Workmanager().initialize(
+      callbackDispatcher,
+      isInDebugMode: false,
+    );
+    await Workmanager().registerPeriodicTask(
+      'daily_prayer_reschedule_task',
+      dailyRescheduleTaskKey,
+      frequency: const Duration(hours: 24),
+      existingWorkPolicy: ExistingWorkPolicy.keep,
+      constraints: Constraints(
+        networkType: NetworkType.not_required,
+      ),
+    );
+  } catch (e) {
+    debugPrint('Workmanager init: $e');
+  }
+
   runApp(const App());
 }
 

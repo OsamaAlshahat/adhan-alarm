@@ -11,6 +11,7 @@ dependencies:
     sdk: flutter
   alarm: ^5.1.4          # exact, background alarms (Android + iOS)
   adhan: ^2.0.0          # offline prayer-time calculation
+  workmanager: ^0.5.2    # background periodic recalculation
   geolocator: ^13.0.1    # GPS
   shared_preferences: ^2.3.2
   permission_handler: ^11.3.1
