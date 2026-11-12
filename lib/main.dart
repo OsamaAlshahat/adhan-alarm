@@ -426,7 +426,9 @@ Future<void> reschedule() async {
     if (s.dateTime.isAfter(now)) await Alarm.stop(s.id);
   }
   for (final a in alarms.where((a) => a.on)) {
-    final path = (a.soundPath != null && File(a.soundPath!).existsSync()) ? a.soundPath! : 'assets/alarm.wav';
+    final path = !a.sound
+        ? 'assets/silent.wav'
+        : ((a.soundPath != null && File(a.soundPath!).existsSync()) ? a.soundPath! : 'assets/alarm.wav');
     var count = 0;
     for (var i = 0; i < 14; i++) {
       final targetDate = now.add(Duration(days: i));
@@ -441,10 +443,9 @@ Future<void> reschedule() async {
       final titleText = a.label.isNotEmpty ? a.label : (a.prayer ? '${a.mins} min ${a.p}' : 'Alarm');
       final isAr = st.language == 'ar' || (st.language == 'system' && WidgetsBinding.instance.platformDispatcher.locale.languageCode == 'ar');
       final stopText = isAr ? 'إيقاف' : 'Stop';
-      final bodyText = a.notify
-          ? '${formatTime(at)} · ${(isAr ? "اضغط للغفوة أو الفتح" : "Tap to Snooze or Open")}'
-          : '';
+      final bodyText = a.notify ? formatTime(at) : '';
 
+      final snoozeText = isAr ? 'غفوة ٥ دقائق' : 'Snooze 5 min';
       await Alarm.set(alarmSettings: AlarmSettings(
         id: a.id * 100 + i,
         dateTime: at,
@@ -453,11 +454,13 @@ Future<void> reschedule() async {
         vibrate: a.vibrate,
         androidFullScreenIntent: true,
         warningNotificationOnKill: a.notify,
+        androidSnoozeDuration: const Duration(minutes: 5),
         volumeSettings: VolumeSettings.fixed(volume: a.sound ? 0.9 : 0.0, volumeEnforced: a.sound),
         notificationSettings: NotificationSettings(
           title: a.notify ? titleText : '',
           body: bodyText,
           stopButton: a.notify ? stopText : null,
+          androidSnoozeButton: a.notify ? snoozeText : null,
         ),
       ));
 
@@ -653,29 +656,46 @@ class Home extends StatefulWidget {
   State<Home> createState() => _H();
 }
 
-class _H extends State<Home> {
+class _H extends State<Home> with WidgetsBindingObserver {
   int tab = 0;
   StreamSubscription<AlarmSettings>? sub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     homeRefresh = () {
       if (mounted) setState(() {});
     };
     sub = Alarm.ringStream.stream.listen(showRing);
-    Future.delayed(const Duration(milliseconds: 600), () async {
-      final now = DateTime.now();
-      for (final s in await Alarm.getAlarms()) {
-        if (!s.dateTime.isAfter(now) && now.difference(s.dateTime).inMinutes < 10) {
-          showRing(s);
-        }
+    _checkRingingAlarms();
+  }
+
+  /// Check if any alarm is currently ringing and show the full-screen UI
+  Future<void> _checkRingingAlarms() async {
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+    final now = DateTime.now();
+    for (final s in await Alarm.getAlarms()) {
+      if (!s.dateTime.isAfter(now) && now.difference(s.dateTime).inMinutes < 10) {
+        showRing(s);
       }
-    });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // Re-check for ringing alarms when the app returns to foreground
+      // (e.g. user tapped the notification)
+      _checkRingingAlarms();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     sub?.cancel();
     homeRefresh = null;
     super.dispose();
