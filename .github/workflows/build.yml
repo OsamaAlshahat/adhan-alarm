@@ -165,11 +165,34 @@ jobs:
               plistlib.dump(data, f)
           "
           fi
-      - name: Force compileSdk 36 for all Android plugins
+      - name: Force compileSdk 36 and consistent JVM target for all Android plugins
         run: |
           mkdir -p ~/.gradle/init.d
+          echo "kotlin.jvm.target.validation.mode=warning" >> ~/.gradle/gradle.properties
           cat > ~/.gradle/init.d/sdk.gradle <<'EOF'
-          allprojects { afterEvaluate { p -> if (p.hasProperty('android')) { p.android.compileSdkVersion 36 } } }
+          allprojects {
+            afterEvaluate { p ->
+              if (p.hasProperty('android')) {
+                p.android.compileSdkVersion 36
+                try {
+                  p.android.compileOptions {
+                    sourceCompatibility = JavaVersion.VERSION_11
+                    targetCompatibility = JavaVersion.VERSION_11
+                  }
+                } catch (Throwable ignored) {}
+                try {
+                  p.android.kotlinOptions {
+                    jvmTarget = "11"
+                  }
+                } catch (Throwable ignored) {}
+              }
+              p.tasks.matching { it.name.contains("Kotlin") }.configureEach { task ->
+                try {
+                  task.kotlinOptions.jvmTarget = "11"
+                } catch (Throwable ignored) {}
+              }
+            }
+          }
           EOF
       - run: flutter pub get
       - run: flutter build apk --release

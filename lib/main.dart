@@ -540,8 +540,13 @@ class CalendarService {
   /// Create a single calendar event, return the event ID
   static Future<String?> createEvent(String calendarId, String title, DateTime time) async {
     try {
-      final tzName = await FlutterTimezone.getLocalTimezone();
-      final location = tz.getLocation(tzName);
+      tz.Location location;
+      try {
+        final tzName = await FlutterTimezone.getLocalTimezone();
+        location = tz.getLocation(tzName);
+      } catch (_) {
+        location = tz.local;
+      }
       final start = tz.TZDateTime.from(time, location);
       final end = start.add(const Duration(minutes: 15));
 
