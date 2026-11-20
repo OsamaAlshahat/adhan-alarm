@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/services.dart';
 import 'package:adhan/adhan.dart';
 import 'package:alarm/alarm.dart';
 import 'package:file_picker/file_picker.dart';
@@ -470,23 +471,71 @@ Future<void> reschedule() async {
   }
 }
 
+const platformFullscreen = MethodChannel('com.adhan_alarm.app/fullscreen_settings');
+
+Future<bool> canUseFullScreenIntent() async {
+  if (!Platform.isAndroid) return true;
+  try {
+    final res = await platformFullscreen.invokeMethod<bool>('canUseFullScreenIntent');
+    return res ?? true;
+  } catch (_) {
+    return true;
+  }
+}
+
+Future<void> openFullScreenIntentSettings() async {
+  if (!Platform.isAndroid) return;
+  try {
+    await platformFullscreen.invokeMethod('openFullScreenIntentSettings');
+  } catch (_) {
+    await openAppSettings();
+  }
+}
+
 final navKey = GlobalKey<NavigatorState>();
 final ringing = <int>{};
 VoidCallback? homeRefresh;
+StreamSubscription? _activeAlarmWatcher;
+
+void dismissRingScreen() {
+  if (ringing.isNotEmpty) {
+    ringing.clear();
+    _activeAlarmWatcher?.cancel();
+    _activeAlarmWatcher = null;
+    navKey.currentState?.popUntil((route) => route.isFirst);
+    homeRefresh?.call();
+  }
+}
 
 void showRing(AlarmSettings s) {
   if (ringing.contains(s.id)) return;
+  // If another ring screen is open, clear it
+  if (ringing.isNotEmpty) {
+    dismissRingScreen();
+  }
   ringing.add(s.id);
   final a = alarms.where((x) => x.id == s.id ~/ 100).firstOrNull;
   if (a != null && a.repeatMode == 'once') {
     a.on = false;
     save();
   }
+
+  // Watch for external dismissal (notification Stop or Snooze action button)
+  // Poll briefly every 500ms while ring screen is active to detect if alarm stopped ringing externally
+  _activeAlarmWatcher?.cancel();
+  _activeAlarmWatcher = Stream.periodic(const Duration(milliseconds: 500)).listen((_) {
+    if (!Alarm.isRinging(s.id)) {
+      dismissRingScreen();
+    }
+  });
+
   navKey.currentState?.push(MaterialPageRoute(
     fullscreenDialog: true,
     builder: (_) => RingScreen(s, a),
   )).then((_) {
     ringing.remove(s.id);
+    _activeAlarmWatcher?.cancel();
+    _activeAlarmWatcher = null;
     homeRefresh?.call();
   });
 }
@@ -675,10 +724,27 @@ class _H extends State<Home> with WidgetsBindingObserver {
   Future<void> _checkRingingAlarms() async {
     await Future.delayed(const Duration(milliseconds: 600));
     if (!mounted) return;
+    
+    // If RingScreen is already showing, check if it's still ringing
+    if (ringing.isNotEmpty) {
+      final activeId = ringing.first;
+      if (!Alarm.isRinging(activeId)) {
+        dismissRingScreen();
+      }
+      return;
+    }
+
     final now = DateTime.now();
     for (final s in await Alarm.getAlarms()) {
-      if (!s.dateTime.isAfter(now) && now.difference(s.dateTime).inMinutes < 10) {
+      if (Alarm.isRinging(s.id)) {
         showRing(s);
+        return;
+      }
+      if (!s.dateTime.isAfter(now) && now.difference(s.dateTime).inMinutes < 10) {
+        if (Alarm.isRinging(s.id)) {
+          showRing(s);
+          return;
+        }
       }
     }
   }
@@ -995,8 +1061,14 @@ class _H extends State<Home> with WidgetsBindingObserver {
                   Text(
                     Tr.t(
                       context,
-                      'To wake up the screen and display the full-screen alarm over your lock screen on modern Android devices, please allow "Full-screen notifications" and "Appear on top" in app settings.',
-                      'لتشغيل الشاشة وعرض منبه الأذان ملء الشاشة على شاشة القفل في أجهزة أندرويد الحديثة، يرجى تفعيل إذن "الإشعارات ملء الشاشة" و"الظهور في المقدمة" من إعدادات التطبيق.',
+                      'To wake up the screen and display the full-screen alarm over your lock screen on Android 14/15:\n\n'
+                      '1. Tap "Full-screen alarm permission" below to grant special access.\n'
+                      '2. Tap "Appear on top" to ensure the alarm can display over other apps.\n'
+                      '3. Disable battery optimization so alarms ring on time.',
+                      'لتشغيل الشاشة وعرض منبه الأذان ملء الشاشة على شاشة القفل في أندرويد ١٤ / ١٥:\n\n'
+                      '١. اضغط "إذن منبه ملء الشاشة" بالأسفل لمنح الإذن الخاص.\n'
+                      '٢. اضغط "الظهور فوق التطبيقات" للتأكد من قدرة المنبه على الظهور.\n'
+                      '٣. استثنِ التطبيق من توفير الطاقة لضمان عمل المنبه في موعده.',
                     ),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -1005,9 +1077,21 @@ class _H extends State<Home> with WidgetsBindingObserver {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      FilledButton.icon(
+                        icon: const Icon(Icons.fullscreen, size: 18),
+                        label: Text(Tr.t(context, 'Full-screen alarm permission', 'إذن منبه ملء الشاشة')),
+                        onPressed: () => openFullScreenIntentSettings(),
+                      ),
                       FilledButton.tonalIcon(
+                        icon: const Icon(Icons.layers, size: 18),
+                        label: Text(Tr.t(context, 'Appear on top', 'الظهور في المقدمة')),
+                        onPressed: () async {
+                          await Permission.systemAlertWindow.request();
+                        },
+                      ),
+                      OutlinedButton.icon(
                         icon: const Icon(Icons.settings, size: 18),
-                        label: Text(Tr.t(context, 'Open App Settings', 'فتح إعدادات التطبيق')),
+                        label: Text(Tr.t(context, 'App Settings', 'إعدادات التطبيق')),
                         onPressed: () => openAppSettings(),
                       ),
                       OutlinedButton.icon(
