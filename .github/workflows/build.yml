@@ -22,6 +22,29 @@ jobs:
           sed -i 's|<activity|<activity android:showWhenLocked="true" android:turnScreenOn="true" android:inheritShowWhenLocked="true"|' $M
           # Set app display name to Awan everywhere in AndroidManifest.xml
           sed -i 's|android:label="[^"]*"|android:label="Awan"|g' $M
+          # Ensure both android:icon and android:roundIcon are in AndroidManifest.xml
+          python3 -c "
+          with open('$M', 'r') as f:
+              content = f.read()
+          if 'android:roundIcon' not in content:
+              content = content.replace('android:icon=\"@mipmap/ic_launcher\"', 'android:icon=\"@mipmap/ic_launcher\" android:roundIcon=\"@mipmap/ic_launcher_round\"')
+          with open('$M', 'w') as f:
+              f.write(content)
+          "
+          # Provide strings.xml for system app name resolution (English & Arabic)
+          mkdir -p android/app/src/main/res/values android/app/src/main/res/values-ar
+          cat > android/app/src/main/res/values/strings.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">Awan</string>
+          </resources>
+          EOF
+          cat > android/app/src/main/res/values-ar/strings.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">أوان</string>
+          </resources>
+          EOF
           # Add alarm RING intent filter so the alarm package can launch the activity on lock screen
           python3 -c "
           with open('$M', 'r') as f:
@@ -39,54 +62,78 @@ jobs:
             [ -f "$f" ] && sed -i 's/flutter.minSdkVersion/23/' "$f" || true
             [ -f "$f" ] && sed -i 's/flutter.targetSdkVersion/35/' "$f" || true
           done
-          # Install app icon for Android launcher across standard and adaptive formats
+          # Install Pillow for image generation
+          python3 -m pip install --break-system-packages Pillow
+          # Clean out ALL default Flutter icons from drawable and mipmap folders
+          rm -f android/app/src/main/res/drawable/ic_launcher*
+          rm -f android/app/src/main/res/drawable-v21/ic_launcher*
+          rm -rf android/app/src/main/res/mipmap-*
+          # Generate icons across all mipmap densities from assets/icon.jpg
           python3 -c "
-          import os, shutil
-          from PIL import Image
+          import os
+          from PIL import Image, ImageDraw
+
           src = 'assets/icon.jpg'
-          if os.path.exists(src):
-              img = Image.open(src).convert('RGBA')
-              sizes = {
-                  'mipmap-mdpi': ((48, 48), (108, 108)),
-                  'mipmap-hdpi': ((72, 72), (162, 162)),
-                  'mipmap-xhdpi': ((96, 96), (216, 216)),
-                  'mipmap-xxhdpi': ((144, 144), (324, 324)),
-                  'mipmap-xxxhdpi': ((192, 192), (432, 432)),
-              }
-              for folder, (size, fg_size) in sizes.items():
-                  target_dir = os.path.join('android/app/src/main/res', folder)
-                  os.makedirs(target_dir, exist_ok=True)
-                  # 1. Full standard icon
-                  resized = img.resize(size, Image.Resampling.LANCZOS)
-                  resized.save(os.path.join(target_dir, 'ic_launcher.png'))
-                  resized.save(os.path.join(target_dir, 'ic_launcher_round.png'))
-                  # 2. Adaptive foreground (scaled into safe inner 66% zone)
-                  fg = Image.new('RGBA', fg_size, (0, 0, 0, 0))
-                  inner_w = int(fg_size[0] * 0.72)
-                  inner_h = int(fg_size[1] * 0.72)
-                  inner_img = img.resize((inner_w, inner_h), Image.Resampling.LANCZOS)
-                  offset = ((fg_size[0] - inner_w) // 2, (fg_size[1] - inner_h) // 2)
-                  fg.paste(inner_img, offset, inner_img)
-                  fg.save(os.path.join(target_dir, 'ic_launcher_foreground.png'))
-              
-              # 3. Create adaptive icon background color and update adaptive xml
-              values_dir = 'android/app/src/main/res/values'
-              os.makedirs(values_dir, exist_ok=True)
-              with open(os.path.join(values_dir, 'ic_launcher_background.xml'), 'w') as f:
-                  f.write('<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n    <color name=\"ic_launcher_background\">#051719</color>\n</resources>\n')
-              
-              v26_dir = 'android/app/src/main/res/mipmap-anydpi-v26'
-              os.makedirs(v26_dir, exist_ok=True)
-              adaptive_xml = '''<?xml version=\"1.0\" encoding=\"utf-8\"?>
+          if not os.path.exists(src):
+              raise FileNotFoundError(f'Icon source {src} not found!')
+
+          img = Image.open(src).convert('RGBA')
+
+          densities = {
+              'mipmap-mdpi': (48, 108),
+              'mipmap-hdpi': (72, 162),
+              'mipmap-xhdpi': (96, 216),
+              'mipmap-xxhdpi': (144, 324),
+              'mipmap-xxxhdpi': (192, 432),
+          }
+
+          for folder, (size, fg_size) in densities.items():
+              target_dir = os.path.join('android/app/src/main/res', folder)
+              os.makedirs(target_dir, exist_ok=True)
+
+              # 1. Standard full launcher icon
+              resized = img.resize((size, size), Image.Resampling.LANCZOS)
+              resized.save(os.path.join(target_dir, 'ic_launcher.png'), 'PNG')
+
+              # 2. Round launcher icon (circular mask)
+              mask = Image.new('L', (size, size), 0)
+              draw = ImageDraw.Draw(mask)
+              draw.ellipse((0, 0, size, size), fill=255)
+              round_img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+              round_img.paste(resized, (0, 0), mask=mask)
+              round_img.save(os.path.join(target_dir, 'ic_launcher_round.png'), 'PNG')
+
+              # 3. Adaptive foreground (sized at 70% of canvas, centered in 108dp)
+              fg = Image.new('RGBA', (fg_size, fg_size), (0, 0, 0, 0))
+              inner_dim = int(fg_size * 0.70)
+              inner_icon = img.resize((inner_dim, inner_dim), Image.Resampling.LANCZOS)
+              pos = ((fg_size - inner_dim) // 2, (fg_size - inner_dim) // 2)
+              fg.paste(inner_icon, pos, inner_icon)
+              fg.save(os.path.join(target_dir, 'ic_launcher_foreground.png'), 'PNG')
+
+          # 4. Background color for adaptive icons
+          values_dir = 'android/app/src/main/res/values'
+          os.makedirs(values_dir, exist_ok=True)
+          with open(os.path.join(values_dir, 'ic_launcher_background.xml'), 'w') as f:
+              f.write('<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n    <color name=\"ic_launcher_background\">#051719</color>\n</resources>\n')
+
+          # 5. Adaptive XML definition (API 26+)
+          v26_dir = 'android/app/src/main/res/mipmap-anydpi-v26'
+          os.makedirs(v26_dir, exist_ok=True)
+          adaptive_xml = '''<?xml version=\"1.0\" encoding=\"utf-8\"?>
           <adaptive-icon xmlns:android=\"http://schemas.android.com/apk/res/android\">
               <background android:drawable=\"@color/ic_launcher_background\"/>
               <foreground android:drawable=\"@mipmap/ic_launcher_foreground\"/>
           </adaptive-icon>'''
-              with open(os.path.join(v26_dir, 'ic_launcher.xml'), 'w') as f:
-                  f.write(adaptive_xml)
-              with open(os.path.join(v26_dir, 'ic_launcher_round.xml'), 'w') as f:
-                  f.write(adaptive_xml)
-          " || true
+          with open(os.path.join(v26_dir, 'ic_launcher.xml'), 'w') as f:
+              f.write(adaptive_xml)
+          with open(os.path.join(v26_dir, 'ic_launcher_round.xml'), 'w') as f:
+              f.write(adaptive_xml)
+
+          print('All Awan launcher icons successfully generated!')
+          "
+          # Verify generated icons
+          ls -la android/app/src/main/res/mipmap-xxxhdpi/
           # Inject native lockscreen wake flags, keyguard dismissal, and fullscreen intent helper into MainActivity.kt
           python3 -c "
           import glob
@@ -227,7 +274,10 @@ jobs:
           EOF
       - run: flutter pub get
       - run: flutter build apk --release
+      - name: Prepare Awan.apk output
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Awan.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: awan-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: Awan-APK
+          path: build/app/outputs/flutter-apk/Awan.apk
