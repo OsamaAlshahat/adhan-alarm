@@ -37,6 +37,27 @@ jobs:
             [ -f "$f" ] && sed -i 's/flutter.minSdkVersion/23/' "$f" || true
             [ -f "$f" ] && sed -i 's/flutter.targetSdkVersion/35/' "$f" || true
           done
+          # Install app icon for Android launcher
+          python3 -c "
+          import os, shutil
+          from PIL import Image
+          src = 'assets/icon.jpg'
+          if os.path.exists(src):
+              img = Image.open(src)
+              sizes = {
+                  'mipmap-mdpi': (48, 48),
+                  'mipmap-hdpi': (72, 72),
+                  'mipmap-xhdpi': (96, 96),
+                  'mipmap-xxhdpi': (144, 144),
+                  'mipmap-xxxhdpi': (192, 192),
+              }
+              for folder, size in sizes.items():
+                  target_dir = os.path.join('android/app/src/main/res', folder)
+                  os.makedirs(target_dir, exist_ok=True)
+                  resized = img.resize(size, Image.Resampling.LANCZOS)
+                  resized.save(os.path.join(target_dir, 'ic_launcher.png'))
+                  resized.save(os.path.join(target_dir, 'ic_launcher_round.png'))
+          " || true
           # Inject native lockscreen wake flags, keyguard dismissal, and fullscreen intent helper into MainActivity.kt
           python3 -c "
           import glob

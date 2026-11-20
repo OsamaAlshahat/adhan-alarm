@@ -557,30 +557,43 @@ class RingScreen extends StatelessWidget {
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: cs.primary,
+        backgroundColor: const Color(0xFF072426),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.alarm, size: 80, color: cs.onPrimary),
-                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.asset(
+                    'assets/icon.jpg',
+                    width: 90,
+                    height: 90,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.alarm, size: 80, color: Color(0xFFE5B54F)),
+                  ),
+                ),
+                const SizedBox(height: 18),
                 Text(
                   formatTime(s.dateTime, c),
-                  style: TextStyle(fontSize: 64, fontWeight: FontWeight.w300, color: cs.onPrimary),
+                  style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w300, color: Color(0xFFF9F5EC)),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 22, color: cs.onPrimary),
+                  style: const TextStyle(fontSize: 22, color: Color(0xFFE5B54F), fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 48),
                 SizedBox(
                   width: double.infinity,
                   height: 60,
                   child: FilledButton.tonal(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F3E41),
+                      foregroundColor: const Color(0xFFF9F5EC),
+                    ),
                     onPressed: () async {
                       await Alarm.stop(s.id);
                       await Alarm.set(alarmSettings: s.copyWith(
@@ -598,14 +611,14 @@ class RingScreen extends StatelessWidget {
                   height: 60,
                   child: FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: cs.onPrimary,
-                      foregroundColor: cs.primary,
+                      backgroundColor: const Color(0xFFE5B54F),
+                      foregroundColor: const Color(0xFF072426),
                     ),
                     onPressed: () async {
                       await Alarm.stop(s.id);
                       nav.pop();
                     },
-                    child: Text(Tr.t(c, 'Stop', 'إيقاف'), style: const TextStyle(fontSize: 20)),
+                    child: Text(Tr.t(c, 'Stop', 'إيقاف'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
@@ -685,13 +698,23 @@ class App extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           theme: ThemeData(
-            colorSchemeSeed: const Color(0xFF0F6B57),
+            colorSchemeSeed: const Color(0xFF0C5A58),
+            scaffoldBackgroundColor: const Color(0xFFF4F7F6),
             useMaterial3: true,
+            appBarTheme: const AppBarTheme(
+              centerTitle: true,
+              elevation: 0,
+            ),
           ),
           darkTheme: ThemeData(
-            colorSchemeSeed: const Color(0xFF0F6B57),
+            colorSchemeSeed: const Color(0xFF147A78),
+            scaffoldBackgroundColor: const Color(0xFF051719),
             brightness: Brightness.dark,
             useMaterial3: true,
+            appBarTheme: const AppBarTheme(
+              centerTitle: true,
+              elevation: 0,
+            ),
           ),
           home: const Home(),
         );
@@ -796,33 +819,52 @@ class _H extends State<Home> with WidgetsBindingObserver {
 
   /// Header widget with placeholder app image that can easily be updated later
   Widget appHeaderWithPlaceholder(BuildContext c) {
+    final isDark = Theme.of(c).brightness == Brightness.dark;
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 12),
-      color: Theme.of(c).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+      color: isDark ? const Color(0xFF09292B) : const Color(0xFFE2EFEF),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: const Color(0xFFE5B54F).withOpacity(0.35)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            // =========================================================================
-            // APP IMAGE PLACEHOLDER:
-            // Replace 'assets/placeholder.png' with your final app logo / hero artwork.
-            // =========================================================================
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/placeholder.png',
-                width: 54,
-                height: 54,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: Theme.of(c).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFE5B54F).withOpacity(0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                  child: Icon(Icons.alarm, color: Theme.of(c).colorScheme.primary, size: 30),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.asset(
+                  'assets/icon.jpg',
+                  width: 58,
+                  height: 58,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Image.asset(
+                    'assets/placeholder.png',
+                    width: 58,
+                    height: 58,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0C5A58),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(Icons.alarm, color: Color(0xFFE5B54F), size: 32),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -831,14 +873,32 @@ class _H extends State<Home> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    Tr.t(c, 'Adhan Alarm', 'منبه الأذان'),
-                    style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  Row(
+                    children: [
+                      Text(
+                        Tr.t(c, 'Awan', 'أوان'),
+                        style: Theme.of(c).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? const Color(0xFFF2D184) : const Color(0xFF9E6E12),
+                              letterSpacing: 0.5,
+                            ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '· ${Tr.t(c, "Adhan Alarm", "منبه الأذان")}',
+                        style: Theme.of(c).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(c).colorScheme.outline,
+                              fontWeight: FontWeight.w500,
+                            ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   Text(
                     '${Tr.country(c, st.country)} · ${Tr.city(c, st.city)}',
-                    style: Theme.of(c).textTheme.bodySmall?.copyWith(color: Theme.of(c).colorScheme.outline),
+                    style: Theme.of(c).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(c).colorScheme.onSurfaceVariant,
+                        ),
                   ),
                 ],
               ),
@@ -1298,36 +1358,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
                       ),
 
                       if (signChoice != 0) ...[
-                        const SizedBox(height: 12),
-                        // Quick Presets
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (final preset in [
-                              {'label': '5m', 'h': 0, 'm': 5},
-                              {'label': '10m', 'h': 0, 'm': 10},
-                              {'label': '15m', 'h': 0, 'm': 15},
-                              {'label': '30m', 'h': 0, 'm': 30},
-                              {'label': '45m', 'h': 0, 'm': 45},
-                              {'label': '1h', 'h': 1, 'm': 0},
-                              {'label': '1h 30m', 'h': 1, 'm': 30},
-                              {'label': '2h', 'h': 2, 'm': 0},
-                            ])
-                              ActionChip(
-                                label: Text(preset['label'] as String),
-                                avatar: (offsetHours == preset['h'] && offsetMinutes == preset['m']) ? const Icon(Icons.check, size: 16) : null,
-                                onPressed: () {
-                                  set(() {
-                                    offsetHours = preset['h'] as int;
-                                    offsetMinutes = preset['m'] as int;
-                                    e.mins = offsetHours * 60 + offsetMinutes;
-                                  });
-                                },
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
 
                         // Hours & Minutes Picker Card
                         Container(
