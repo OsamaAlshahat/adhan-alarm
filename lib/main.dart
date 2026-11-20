@@ -523,8 +523,9 @@ void showRing(AlarmSettings s) {
   // Watch for external dismissal (notification Stop or Snooze action button)
   // Poll briefly every 500ms while ring screen is active to detect if alarm stopped ringing externally
   _activeAlarmWatcher?.cancel();
-  _activeAlarmWatcher = Stream.periodic(const Duration(milliseconds: 500)).listen((_) {
-    if (!Alarm.isRinging(s.id)) {
+  _activeAlarmWatcher = Stream.periodic(const Duration(milliseconds: 500)).listen((_) async {
+    final stillRinging = await Alarm.isRinging(s.id);
+    if (!stillRinging) {
       dismissRingScreen();
     }
   });
@@ -728,7 +729,8 @@ class _H extends State<Home> with WidgetsBindingObserver {
     // If RingScreen is already showing, check if it's still ringing
     if (ringing.isNotEmpty) {
       final activeId = ringing.first;
-      if (!Alarm.isRinging(activeId)) {
+      final stillRinging = await Alarm.isRinging(activeId);
+      if (!stillRinging) {
         dismissRingScreen();
       }
       return;
@@ -736,12 +738,14 @@ class _H extends State<Home> with WidgetsBindingObserver {
 
     final now = DateTime.now();
     for (final s in await Alarm.getAlarms()) {
-      if (Alarm.isRinging(s.id)) {
+      final isRinging = await Alarm.isRinging(s.id);
+      if (isRinging) {
         showRing(s);
         return;
       }
       if (!s.dateTime.isAfter(now) && now.difference(s.dateTime).inMinutes < 10) {
-        if (Alarm.isRinging(s.id)) {
+        final ringingNow = await Alarm.isRinging(s.id);
+        if (ringingNow) {
           showRing(s);
           return;
         }
