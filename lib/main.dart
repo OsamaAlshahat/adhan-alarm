@@ -493,6 +493,26 @@ Future<void> reschedule() async {
 
 const platformFullscreen = MethodChannel('com.adhan_alarm.app/fullscreen_settings');
 
+/// Safely format calendar display name without ever showing "null"
+String calendarDisplayName(dc.Calendar cal) {
+  final name = (cal.name != null && cal.name!.trim().isNotEmpty && cal.name != 'null')
+      ? cal.name!.trim()
+      : null;
+  final account = (cal.accountName != null && cal.accountName!.trim().isNotEmpty && cal.accountName != 'null')
+      ? cal.accountName!.trim()
+      : null;
+
+  if (name != null && account != null && name.toLowerCase() != account.toLowerCase()) {
+    return '$name ($account)';
+  } else if (name != null) {
+    return name;
+  } else if (account != null) {
+    return account;
+  } else {
+    return 'Calendar ${cal.id ?? ""}';
+  }
+}
+
 // ===================================================================
 // Calendar Service — best-effort sync, never blocks alarm scheduling
 // ===================================================================
@@ -533,7 +553,7 @@ class CalendarService {
     }
   }
 
-  /// Get all writable calendars, falling back to non-read-only or all calendars
+  /// Get all writable calendars, filtering out ghost/null entries
   static Future<List<dc.Calendar>> getWritableCalendars() async {
     try {
       await requestPermissions();
@@ -541,28 +561,56 @@ class CalendarService {
       if (!result.isSuccess || result.data == null) return [];
 
       final all = result.data!;
-      if (all.isEmpty) {
-        // No calendars exist on this device — create a local "Awan" calendar!
+
+      // 1. Filter out entries with invalid/null ID
+      final valid = all.where((c) {
+        final id = c.id?.trim();
+        return id != null && id.isNotEmpty && id != 'null';
+      }).toList();
+
+      if (valid.isEmpty) {
+        // No valid calendars exist on this device — create a local "Awan" calendar!
         final newId = await createLocalCalendar();
         if (newId != null) {
           final refreshed = await _plugin.retrieveCalendars();
           if (refreshed.isSuccess && refreshed.data != null) {
-            return refreshed.data!;
+            return refreshed.data!.where((c) {
+              final id = c.id?.trim();
+              return id != null && id.isNotEmpty && id != 'null';
+            }).toList();
           }
         }
         return [];
       }
 
-      // 1. Prefer explicitly writable calendars
-      final writable = all.where((c) => c.isReadOnly == false).toList();
+      // 2. Deduplicate by unique calendar ID
+      final seenIds = <String>{};
+      final uniqueList = <dc.Calendar>[];
+      for (final c in valid) {
+        if (!seenIds.contains(c.id!)) {
+          seenIds.add(c.id!);
+          uniqueList.add(c);
+        }
+      }
+
+      // 3. Filter out purely internal/ghost calendars where both name and account are null/empty
+      final withNames = uniqueList.where((c) {
+        final hasName = c.name != null && c.name!.trim().isNotEmpty && c.name != 'null';
+        final hasAccount = c.accountName != null && c.accountName!.trim().isNotEmpty && c.accountName != 'null';
+        return hasName || hasAccount;
+      }).toList();
+
+      final candidates = withNames.isNotEmpty ? withNames : uniqueList;
+
+      // 4. Prefer explicitly writable calendars (isReadOnly == false)
+      final writable = candidates.where((c) => c.isReadOnly == false).toList();
       if (writable.isNotEmpty) return writable;
 
-      // 2. Include calendars where isReadOnly is null or not true
-      final nonReadOnly = all.where((c) => c.isReadOnly != true).toList();
+      // 5. Fallback to calendars where isReadOnly is not true
+      final nonReadOnly = candidates.where((c) => c.isReadOnly != true).toList();
       if (nonReadOnly.isNotEmpty) return nonReadOnly;
 
-      // 3. Fallback: return all calendars so the user is never stuck
-      return all;
+      return candidates;
     } catch (_) {
       return [];
     }
@@ -1447,7 +1495,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
                         DropdownMenuItem(
                           value: cal.id,
                           child: Text(
-                            '${cal.name ?? cal.id}${cal.accountName != null && cal.accountName!.isNotEmpty ? ' (${cal.accountName})' : ''}',
+                            calendarDisplayName(cal),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1926,7 +1974,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
                               DropdownMenuItem(
                                 value: cal.id,
                                 child: Text(
-                                  '${cal.name ?? cal.id}${cal.accountName != null && cal.accountName!.isNotEmpty ? ' (${cal.accountName})' : ''}',
+                                  calendarDisplayName(cal),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -1970,7 +2018,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
                                   DropdownMenuItem(
                                     value: cal.id,
                                     child: Text(
-                                      '${cal.name ?? cal.id}${cal.accountName != null && cal.accountName!.isNotEmpty ? ' (${cal.accountName})' : ''}',
+                                      calendarDisplayName(cal),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
