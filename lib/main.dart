@@ -499,9 +499,12 @@ const platformFullscreen = MethodChannel('com.adhan_alarm.app/fullscreen_setting
 class CalendarService {
   static final _plugin = dc.DeviceCalendarPlugin();
 
-  /// Request calendar permissions, return true if granted
+  /// Request calendar permissions using both permission_handler and device_calendar
   static Future<bool> requestPermissions() async {
     try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        await Permission.calendar.request();
+      }
       var perms = await _plugin.hasPermissions();
       if (perms.isSuccess && !(perms.data ?? false)) {
         perms = await _plugin.requestPermissions();
@@ -512,13 +515,54 @@ class CalendarService {
     }
   }
 
-  /// Get all writable calendars
+  /// Create a local "Awan" calendar on the device
+  static Future<String?> createLocalCalendar() async {
+    try {
+      await requestPermissions();
+      final res = await _plugin.createCalendar(
+        'Awan',
+        calendarColor: const Color(0xFF0C5A58),
+        localAccountName: 'Awan',
+      );
+      if (res != null && res.isSuccess && res.data != null) {
+        return res.data;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Get all writable calendars, falling back to non-read-only or all calendars
   static Future<List<dc.Calendar>> getWritableCalendars() async {
     try {
-      if (!await requestPermissions()) return [];
+      await requestPermissions();
       final result = await _plugin.retrieveCalendars();
       if (!result.isSuccess || result.data == null) return [];
-      return result.data!.where((c) => !(c.isReadOnly ?? true)).toList();
+
+      final all = result.data!;
+      if (all.isEmpty) {
+        // No calendars exist on this device — create a local "Awan" calendar!
+        final newId = await createLocalCalendar();
+        if (newId != null) {
+          final refreshed = await _plugin.retrieveCalendars();
+          if (refreshed.isSuccess && refreshed.data != null) {
+            return refreshed.data!;
+          }
+        }
+        return [];
+      }
+
+      // 1. Prefer explicitly writable calendars
+      final writable = all.where((c) => c.isReadOnly == false).toList();
+      if (writable.isNotEmpty) return writable;
+
+      // 2. Include calendars where isReadOnly is null or not true
+      final nonReadOnly = all.where((c) => c.isReadOnly != true).toList();
+      if (nonReadOnly.isNotEmpty) return nonReadOnly;
+
+      // 3. Fallback: return all calendars so the user is never stuck
+      return all;
     } catch (_) {
       return [];
     }
@@ -738,15 +782,21 @@ class RingScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Image.asset(
-                    'assets/icon.jpg',
-                    width: 90,
-                    height: 90,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.alarm, size: 80, color: Color(0xFFE5B54F)),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF0F3E41),
+                    border: Border.all(color: const Color(0xFFE5B54F).withOpacity(0.4), width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFE5B54F).withOpacity(0.2),
+                        blurRadius: 16,
+                        spreadRadius: 2,
+                      ),
+                    ],
                   ),
+                  child: const Icon(Icons.alarm, size: 54, color: Color(0xFFE5B54F)),
                 ),
                 const SizedBox(height: 18),
                 Text(
@@ -872,7 +922,7 @@ class App extends StatelessWidget {
       valueListenable: appLocaleNotifier,
       builder: (context, activeLocale, _) {
         return MaterialApp(
-          title: 'Adhan Alarm',
+          title: 'Awan',
           navigatorKey: navKey,
           locale: activeLocale,
           supportedLocales: const [
@@ -919,6 +969,8 @@ class Home extends StatefulWidget {
 class _H extends State<Home> with WidgetsBindingObserver {
   int tab = 0;
   StreamSubscription<AlarmSettings>? sub;
+  List<dc.Calendar>? _availableCalendars;
+  bool _loadingCalendars = false;
 
   @override
   void initState() {
@@ -929,6 +981,26 @@ class _H extends State<Home> with WidgetsBindingObserver {
     };
     sub = Alarm.ringStream.stream.listen(showRing);
     _checkRingingAlarms();
+    _refreshCalendars();
+  }
+
+  Future<void> _refreshCalendars() async {
+    if (!mounted) return;
+    setState(() => _loadingCalendars = true);
+    final cals = await CalendarService.getWritableCalendars();
+    if (mounted) {
+      setState(() {
+        _availableCalendars = cals;
+        _loadingCalendars = false;
+        if (cals.isNotEmpty) {
+          final isCurrentValid = st.defaultCalendarId != null && cals.any((c) => c.id == st.defaultCalendarId);
+          if (!isCurrentValid) {
+            st.defaultCalendarId = cals.first.id;
+            save();
+          }
+        }
+      });
+    }
   }
 
   /// Check if any alarm is currently ringing and show the full-screen UI
@@ -967,9 +1039,8 @@ class _H extends State<Home> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // Re-check for ringing alarms when the app returns to foreground
-      // (e.g. user tapped the notification)
       _checkRingingAlarms();
+      _refreshCalendars();
     }
   }
 
@@ -984,7 +1055,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext c) => Scaffold(
     appBar: AppBar(
-      title: Text(tab == 0 ? Tr.t(c, 'Adhan Alarm', 'منبه الأذان') : Tr.t(c, 'Settings', 'الإعدادات')),
+      title: Text(tab == 0 ? Tr.t(c, 'Awan', 'أوان') : Tr.t(c, 'Settings', 'الإعدادات')),
     ),
     body: SafeArea(top: false, child: tab == 0 ? alarmsView() : settingsView()),
     floatingActionButton: tab == 0
@@ -1004,104 +1075,11 @@ class _H extends State<Home> with WidgetsBindingObserver {
     ),
   );
 
-  /// Header widget with placeholder app image that can easily be updated later
-  Widget appHeaderWithPlaceholder(BuildContext c) {
-    final isDark = Theme.of(c).brightness == Brightness.dark;
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      color: isDark ? const Color(0xFF09292B) : const Color(0xFFE2EFEF),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: const Color(0xFFE5B54F).withOpacity(0.35)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFE5B54F).withOpacity(0.25),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Image.asset(
-                  'assets/icon.jpg',
-                  width: 58,
-                  height: 58,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Image.asset(
-                    'assets/placeholder.png',
-                    width: 58,
-                    height: 58,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 58,
-                      height: 58,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0C5A58),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(Icons.alarm, color: Color(0xFFE5B54F), size: 32),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        Tr.t(c, 'Awan', 'أوان'),
-                        style: Theme.of(c).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? const Color(0xFFF2D184) : const Color(0xFF9E6E12),
-                              letterSpacing: 0.5,
-                            ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '· ${Tr.t(c, "Adhan Alarm", "منبه الأذان")}',
-                        style: Theme.of(c).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(c).colorScheme.outline,
-                              fontWeight: FontWeight.w500,
-                            ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${Tr.country(c, st.country)} · ${Tr.city(c, st.city)}',
-                    style: Theme.of(c).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(c).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget alarmsView() {
     final t = timesFor(DateTime.now());
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        appHeaderWithPlaceholder(context),
         Card(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -1328,7 +1306,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
                       '1. Tap "Full-screen alarm permission" below to grant special access.\n'
                       '2. Tap "Appear on top" to ensure the alarm can display over other apps.\n'
                       '3. Disable battery optimization so alarms ring on time.',
-                      'لتشغيل الشاشة وعرض منبه الأذان ملء الشاشة على شاشة القفل في أندرويد ١٤ / ١٥:\n\n'
+                      'لتشغيل الشاشة وعرض تنبيهات أوان ملء الشاشة على شاشة القفل في أندرويد ١٤ / ١٥:\n\n'
                       '١. اضغط "إذن منبه ملء الشاشة" بالأسفل لمنح الإذن الخاص.\n'
                       '٢. اضغط "الظهور فوق التطبيقات" للتأكد من قدرة المنبه على الظهور.\n'
                       '٣. استثنِ التطبيق من توفير الطاقة لضمان عمل المنبه في موعده.',
@@ -1378,7 +1356,19 @@ class _H extends State<Home> with WidgetsBindingObserver {
         ],
         // ===== Calendar Integration Section =====
         const SizedBox(height: 24),
-        Text(Tr.t(context, 'Calendar integration', 'ربط التقويم'), style: Theme.of(context).textTheme.titleSmall),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(Tr.t(context, 'Calendar integration', 'ربط التقويم'), style: Theme.of(context).textTheme.titleSmall),
+            IconButton(
+              icon: _loadingCalendars
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.refresh, size: 20),
+              tooltip: Tr.t(context, 'Refresh calendars', 'تحديث التقويمات'),
+              onPressed: _loadingCalendars ? null : _refreshCalendars,
+            ),
+          ],
+        ),
         const SizedBox(height: 8),
         Card(
           margin: EdgeInsets.zero,
@@ -1397,70 +1387,78 @@ class _H extends State<Home> with WidgetsBindingObserver {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 12),
-                FutureBuilder<List<dc.Calendar>>(
-                  future: CalendarService.getWritableCalendars(),
-                  builder: (ctx, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-                      );
-                    }
-                    final calendars = snapshot.data ?? [];
-                    if (calendars.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Text(
-                          Tr.t(ctx, 'No writable calendars found. Please grant calendar permission.',
-                              'لم يتم العثور على تقويم قابل للكتابة. يرجى منح إذن التقويم.'),
-                          style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 12),
+                if (_loadingCalendars && _availableCalendars == null)
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                  )
+                else if (_availableCalendars == null || _availableCalendars!.isEmpty)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        Tr.t(
+                          context,
+                          'No calendar available on device or permission not granted yet.',
+                          'لا يوجد تقويم متاح على الجهاز أو لم يتم منح الإذن بعد.',
                         ),
-                      );
-                    }
-                    // Check if saved ID still valid
-                    final validIds = calendars.map((c) => c.id).toSet();
-                    final currentId = st.defaultCalendarId;
-                    final isCurrentValid = currentId != null && validIds.contains(currentId);
-                    if (!isCurrentValid && currentId != null) {
-                      // Previously saved calendar no longer available
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          setState(() { st.defaultCalendarId = null; });
-                          save();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(Tr.t(context,
-                              'Previously selected calendar is no longer available. Please choose another.',
-                              'التقويم المختار سابقاً لم يعد متاحاً. يرجى اختيار تقويم آخر.'))),
-                          );
-                        }
-                      });
-                    }
-                    return DropdownButtonFormField<String>(
-                      value: isCurrentValid ? currentId : (calendars.isNotEmpty ? calendars.first.id : null),
-                      decoration: InputDecoration(
-                        labelText: Tr.t(ctx, 'Default calendar', 'التقويم الافتراضي'),
-                        prefixIcon: const Icon(Icons.calendar_month),
+                        style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 13),
                       ),
-                      items: [
-                        for (final cal in calendars)
-                          DropdownMenuItem(
-                            value: cal.id,
-                            child: Text(
-                              '${cal.name ?? cal.id}${cal.accountName != null ? ' (${cal.accountName})' : ''}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton.icon(
+                            icon: const Icon(Icons.check_circle_outline, size: 18),
+                            label: Text(Tr.t(context, 'Grant permission & reload', 'منح الإذن وتحديث')),
+                            onPressed: () async {
+                              await CalendarService.requestPermissions();
+                              await _refreshCalendars();
+                            },
                           ),
-                      ],
-                      onChanged: (v) {
-                        if (v == null) return;
-                        setState(() { st.defaultCalendarId = v; });
-                        save();
-                        // Re-sync all calendar-enabled alarms with new default
-                        syncAllCalendarEvents();
-                      },
-                    );
-                  },
-                ),
+                          FilledButton.tonalIcon(
+                            icon: const Icon(Icons.add, size: 18),
+                            label: Text(Tr.t(context, 'Create "Awan" calendar', 'إنشاء تقويم "أوان"')),
+                            onPressed: () async {
+                              final newId = await CalendarService.createLocalCalendar();
+                              if (newId != null) {
+                                st.defaultCalendarId = newId;
+                                save();
+                              }
+                              await _refreshCalendars();
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    value: (_availableCalendars!.any((c) => c.id == st.defaultCalendarId))
+                        ? st.defaultCalendarId
+                        : _availableCalendars!.first.id,
+                    decoration: InputDecoration(
+                      labelText: Tr.t(context, 'Default calendar', 'التقويم الافتراضي'),
+                      prefixIcon: const Icon(Icons.calendar_month),
+                    ),
+                    items: [
+                      for (final cal in _availableCalendars!)
+                        DropdownMenuItem(
+                          value: cal.id,
+                          child: Text(
+                            '${cal.name ?? cal.id}${cal.accountName != null && cal.accountName!.isNotEmpty ? ' (${cal.accountName})' : ''}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() { st.defaultCalendarId = v; });
+                      save();
+                      syncAllCalendarEvents();
+                    },
+                  ),
               ],
             ),
           ),
@@ -1903,59 +1901,90 @@ class _H extends State<Home> with WidgetsBindingObserver {
                       subtitle: Text(Tr.t(ctx, 'Create events in your device calendar', 'إنشاء أحداث في تقويم الجهاز')),
                       secondary: const Icon(Icons.calendar_month),
                       value: e.addToCalendar,
-                      onChanged: (v) => set(() => e.addToCalendar = v),
+                      onChanged: (v) async {
+                        if (v && (_availableCalendars == null || _availableCalendars!.isEmpty)) {
+                          await _refreshCalendars();
+                        }
+                        set(() => e.addToCalendar = v);
+                      },
                     ),
-                    if (e.addToCalendar)
-                      FutureBuilder<List<dc.Calendar>>(
-                        future: CalendarService.getWritableCalendars(),
-                        builder: (fbCtx, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 8),
-                              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
-                            );
-                          }
-                          final calendars = snapshot.data ?? [];
-                          if (calendars.isEmpty) {
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                Tr.t(fbCtx, 'No writable calendars available', 'لا يوجد تقويم قابل للكتابة'),
-                                style: TextStyle(color: Theme.of(fbCtx).colorScheme.error, fontSize: 12),
-                              ),
-                            );
-                          }
-                          final effectiveId = e.calendarId ?? st.defaultCalendarId;
-                          final validIds = calendars.map((c) => c.id).toSet();
-                          final selectedId = (effectiveId != null && validIds.contains(effectiveId))
-                              ? effectiveId
-                              : calendars.first.id;
-                          return DropdownButtonFormField<String>(
-                            value: selectedId,
-                            decoration: InputDecoration(
-                              labelText: Tr.t(fbCtx, 'Calendar for this alarm', 'التقويم لهذا المنبه'),
-                              prefixIcon: const Icon(Icons.event_note),
-                              helperText: Tr.t(fbCtx, 'Override the default calendar', 'تجاوز التقويم الافتراضي'),
-                            ),
-                            items: [
-                              for (final cal in calendars)
-                                DropdownMenuItem(
-                                  value: cal.id,
-                                  child: Text(
-                                    '${cal.name ?? cal.id}${cal.accountName != null ? ' (${cal.accountName})' : ''}',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                    if (e.addToCalendar) ...[
+                      if (_availableCalendars != null && _availableCalendars!.isNotEmpty) ...[
+                        DropdownButtonFormField<String>(
+                          value: (e.calendarId != null && _availableCalendars!.any((c) => c.id == e.calendarId))
+                              ? e.calendarId
+                              : ((st.defaultCalendarId != null && _availableCalendars!.any((c) => c.id == st.defaultCalendarId))
+                                  ? st.defaultCalendarId
+                                  : _availableCalendars!.first.id),
+                          decoration: InputDecoration(
+                            labelText: Tr.t(ctx, 'Calendar for this alarm', 'التقويم لهذا المنبه'),
+                            prefixIcon: const Icon(Icons.event_note),
+                            helperText: Tr.t(ctx, 'Override the default calendar', 'تجاوز التقويم الافتراضي'),
+                          ),
+                          items: [
+                            for (final cal in _availableCalendars!)
+                              DropdownMenuItem(
+                                value: cal.id,
+                                child: Text(
+                                  '${cal.name ?? cal.id}${cal.accountName != null && cal.accountName!.isNotEmpty ? ' (${cal.accountName})' : ''}',
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                            ],
-                            onChanged: (v) {
-                              set(() {
-                                // If same as default, store null (use default)
-                                e.calendarId = (v == st.defaultCalendarId) ? null : v;
-                              });
-                            },
-                          );
-                        },
-                      ),
+                              ),
+                          ],
+                          onChanged: (v) {
+                            set(() {
+                              e.calendarId = (v == st.defaultCalendarId) ? null : v;
+                            });
+                          },
+                        ),
+                      ] else ...[
+                        FutureBuilder<List<dc.Calendar>>(
+                          future: CalendarService.getWritableCalendars(),
+                          builder: (fbCtx, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 8),
+                                child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                              );
+                            }
+                            final calendars = snapshot.data ?? [];
+                            if (calendars.isEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  Tr.t(fbCtx, 'No calendar available. Check Settings > Calendar.', 'لا يوجد تقويم متاح. راجع الإعدادات > التقويم.'),
+                                  style: TextStyle(color: Theme.of(fbCtx).colorScheme.error, fontSize: 12),
+                                ),
+                              );
+                            }
+                            return DropdownButtonFormField<String>(
+                              value: (e.calendarId != null && calendars.any((c) => c.id == e.calendarId))
+                                  ? e.calendarId
+                                  : calendars.first.id,
+                              decoration: InputDecoration(
+                                labelText: Tr.t(fbCtx, 'Calendar for this alarm', 'التقويم لهذا المنبه'),
+                                prefixIcon: const Icon(Icons.event_note),
+                              ),
+                              items: [
+                                for (final cal in calendars)
+                                  DropdownMenuItem(
+                                    value: cal.id,
+                                    child: Text(
+                                      '${cal.name ?? cal.id}${cal.accountName != null && cal.accountName!.isNotEmpty ? ' (${cal.accountName})' : ''}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                              onChanged: (v) {
+                                set(() {
+                                  e.calendarId = (v == st.defaultCalendarId) ? null : v;
+                                });
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ],
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,

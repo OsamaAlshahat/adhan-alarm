@@ -20,6 +20,8 @@ jobs:
           P='<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/><uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/><uses-permission android:name="android.permission.DISABLE_KEYGUARD"/><uses-permission android:name="android.permission.READ_CALENDAR"/><uses-permission android:name="android.permission.WRITE_CALENDAR"/>'
           sed -i "s|<application|$P<application|" $M
           sed -i 's|<activity|<activity android:showWhenLocked="true" android:turnScreenOn="true" android:inheritShowWhenLocked="true"|' $M
+          # Set app display name to Awan everywhere in AndroidManifest.xml
+          sed -i 's|android:label="[^"]*"|android:label="Awan"|g' $M
           # Add alarm RING intent filter so the alarm package can launch the activity on lock screen
           python3 -c "
           with open('$M', 'r') as f:
@@ -37,26 +39,53 @@ jobs:
             [ -f "$f" ] && sed -i 's/flutter.minSdkVersion/23/' "$f" || true
             [ -f "$f" ] && sed -i 's/flutter.targetSdkVersion/35/' "$f" || true
           done
-          # Install app icon for Android launcher
+          # Install app icon for Android launcher across standard and adaptive formats
           python3 -c "
           import os, shutil
           from PIL import Image
           src = 'assets/icon.jpg'
           if os.path.exists(src):
-              img = Image.open(src)
+              img = Image.open(src).convert('RGBA')
               sizes = {
-                  'mipmap-mdpi': (48, 48),
-                  'mipmap-hdpi': (72, 72),
-                  'mipmap-xhdpi': (96, 96),
-                  'mipmap-xxhdpi': (144, 144),
-                  'mipmap-xxxhdpi': (192, 192),
+                  'mipmap-mdpi': ((48, 48), (108, 108)),
+                  'mipmap-hdpi': ((72, 72), (162, 162)),
+                  'mipmap-xhdpi': ((96, 96), (216, 216)),
+                  'mipmap-xxhdpi': ((144, 144), (324, 324)),
+                  'mipmap-xxxhdpi': ((192, 192), (432, 432)),
               }
-              for folder, size in sizes.items():
+              for folder, (size, fg_size) in sizes.items():
                   target_dir = os.path.join('android/app/src/main/res', folder)
                   os.makedirs(target_dir, exist_ok=True)
+                  # 1. Full standard icon
                   resized = img.resize(size, Image.Resampling.LANCZOS)
                   resized.save(os.path.join(target_dir, 'ic_launcher.png'))
                   resized.save(os.path.join(target_dir, 'ic_launcher_round.png'))
+                  # 2. Adaptive foreground (scaled into safe inner 66% zone)
+                  fg = Image.new('RGBA', fg_size, (0, 0, 0, 0))
+                  inner_w = int(fg_size[0] * 0.72)
+                  inner_h = int(fg_size[1] * 0.72)
+                  inner_img = img.resize((inner_w, inner_h), Image.Resampling.LANCZOS)
+                  offset = ((fg_size[0] - inner_w) // 2, (fg_size[1] - inner_h) // 2)
+                  fg.paste(inner_img, offset, inner_img)
+                  fg.save(os.path.join(target_dir, 'ic_launcher_foreground.png'))
+              
+              # 3. Create adaptive icon background color and update adaptive xml
+              values_dir = 'android/app/src/main/res/values'
+              os.makedirs(values_dir, exist_ok=True)
+              with open(os.path.join(values_dir, 'ic_launcher_background.xml'), 'w') as f:
+                  f.write('<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n    <color name=\"ic_launcher_background\">#051719</color>\n</resources>\n')
+              
+              v26_dir = 'android/app/src/main/res/mipmap-anydpi-v26'
+              os.makedirs(v26_dir, exist_ok=True)
+              adaptive_xml = '''<?xml version=\"1.0\" encoding=\"utf-8\"?>
+          <adaptive-icon xmlns:android=\"http://schemas.android.com/apk/res/android\">
+              <background android:drawable=\"@color/ic_launcher_background\"/>
+              <foreground android:drawable=\"@mipmap/ic_launcher_foreground\"/>
+          </adaptive-icon>'''
+              with open(os.path.join(v26_dir, 'ic_launcher.xml'), 'w') as f:
+                  f.write(adaptive_xml)
+              with open(os.path.join(v26_dir, 'ic_launcher_round.xml'), 'w') as f:
+                  f.write(adaptive_xml)
           " || true
           # Inject native lockscreen wake flags, keyguard dismissal, and fullscreen intent helper into MainActivity.kt
           python3 -c "
@@ -157,7 +186,9 @@ jobs:
           with open('$PLIST', 'rb') as f:
               data = plistlib.load(f)
           data['UIBackgroundModes'] = ['audio', 'fetch', 'processing']
-          data['NSLocationWhenInUseUsageDescription'] = 'Adhan Alarm needs your location to calculate accurate offline prayer times.'
+          data['CFBundleDisplayName'] = 'Awan'
+          data['CFBundleName'] = 'Awan'
+          data['NSLocationWhenInUseUsageDescription'] = 'Awan needs your location to calculate accurate offline prayer times.'
           data['NSCalendarsUsageDescription'] = 'Awan needs access to your calendar to add prayer alarm events.'
           data['NSCalendarsFullAccessUsageDescription'] = 'Awan needs full calendar access to create and manage alarm events in your selected calendar.'
           data['BGTaskSchedulerPermittedIdentifiers'] = ['dev.fluttercommunity.workmanager.iOSBackgroundProcessingTask', 'dev.fluttercommunity.workmanager.iOSBackgroundFetchTask', 'daily_prayer_reschedule_task']
@@ -198,5 +229,5 @@ jobs:
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
-          name: adhan-alarm-apk
+          name: awan-apk
           path: build/app/outputs/flutter-apk/app-release.apk
