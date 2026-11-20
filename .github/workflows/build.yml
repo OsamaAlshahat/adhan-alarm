@@ -62,6 +62,12 @@ jobs:
             [ -f "$f" ] && sed -i 's/flutter.minSdkVersion/23/' "$f" || true
             [ -f "$f" ] && sed -i 's/flutter.targetSdkVersion/35/' "$f" || true
           done
+          # Proguard rules to prevent R8 from stripping device_calendar native models
+          cat > android/app/proguard-rules.pro <<'EOF'
+          -keep class com.builttoroam.devicecalendar.** { *; }
+          -keepclassmembers class com.builttoroam.devicecalendar.** { *; }
+          -dontwarn com.builttoroam.devicecalendar.**
+          EOF
           # Install Pillow for image generation
           python3 -m pip install --break-system-packages Pillow
           # Clean out ALL default Flutter icons from drawable and mipmap folders

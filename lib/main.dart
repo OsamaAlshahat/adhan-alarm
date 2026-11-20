@@ -495,22 +495,36 @@ const platformFullscreen = MethodChannel('com.adhan_alarm.app/fullscreen_setting
 
 /// Safely format calendar display name without ever showing "null"
 String calendarDisplayName(dc.Calendar cal) {
-  final name = (cal.name != null && cal.name!.trim().isNotEmpty && cal.name != 'null')
+  var name = (cal.name != null && cal.name!.trim().isNotEmpty && cal.name != 'null')
       ? cal.name!.trim()
       : null;
   final account = (cal.accountName != null && cal.accountName!.trim().isNotEmpty && cal.accountName != 'null')
       ? cal.accountName!.trim()
       : null;
 
-  if (name != null && account != null && name.toLowerCase() != account.toLowerCase()) {
-    return '$name ($account)';
-  } else if (name != null) {
-    return name;
-  } else if (account != null) {
-    return account;
-  } else {
-    return 'Calendar ${cal.id ?? ""}';
+  final isSamsung = cal.accountType?.toLowerCase().contains('samsung') == true ||
+                    account?.toLowerCase().contains('samsung') == true ||
+                    account?.toLowerCase() == 'phone' ||
+                    account?.toLowerCase() == 'my phone';
+
+  if (name == null || name.isEmpty) {
+    if (isSamsung) {
+      name = 'Samsung Calendar';
+    } else if (cal.isDefault == true) {
+      name = 'Phone Calendar';
+    } else if (account != null && account.isNotEmpty) {
+      name = account;
+    } else {
+      name = 'Calendar ${cal.id ?? ""}';
+    }
   }
+
+  if (isSamsung && (account?.toLowerCase() == 'phone' || account?.toLowerCase() == 'my phone')) {
+    return '$name (Phone)';
+  } else if (account != null && name != account && !name.contains(account)) {
+    return '$name ($account)';
+  }
+  return name;
 }
 
 // ===================================================================
@@ -522,38 +536,27 @@ class CalendarService {
   /// Request calendar permissions using both permission_handler and device_calendar
   static Future<bool> requestPermissions() async {
     try {
-      if (Platform.isAndroid || Platform.isIOS) {
-        await Permission.calendar.request();
+      var isGranted = await Permission.calendar.isGranted;
+      if (!isGranted) {
+        final res = await Permission.calendar.request();
+        isGranted = res.isGranted;
       }
       var perms = await _plugin.hasPermissions();
-      if (perms.isSuccess && !(perms.data ?? false)) {
-        perms = await _plugin.requestPermissions();
+      if (perms.isSuccess && perms.data == true) {
+        isGranted = true;
+      } else if (!isGranted) {
+        final req = await _plugin.requestPermissions();
+        if (req.isSuccess && req.data == true) {
+          isGranted = true;
+        }
       }
-      return perms.isSuccess && (perms.data ?? false);
+      return isGranted;
     } catch (_) {
-      return false;
+      return true;
     }
   }
 
-  /// Create a local "Awan" calendar on the device
-  static Future<String?> createLocalCalendar() async {
-    try {
-      await requestPermissions();
-      final res = await _plugin.createCalendar(
-        'Awan',
-        calendarColor: const Color(0xFF0C5A58),
-        localAccountName: 'Awan',
-      );
-      if (res != null && res.isSuccess && res.data != null) {
-        return res.data;
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Get all writable calendars, filtering out ghost/null entries
+  /// Get all device calendars (Samsung Calendar, Google Calendar, etc.)
   static Future<List<dc.Calendar>> getWritableCalendars() async {
     try {
       await requestPermissions();
@@ -568,20 +571,7 @@ class CalendarService {
         return id != null && id.isNotEmpty && id != 'null';
       }).toList();
 
-      if (valid.isEmpty) {
-        // No valid calendars exist on this device — create a local "Awan" calendar!
-        final newId = await createLocalCalendar();
-        if (newId != null) {
-          final refreshed = await _plugin.retrieveCalendars();
-          if (refreshed.isSuccess && refreshed.data != null) {
-            return refreshed.data!.where((c) {
-              final id = c.id?.trim();
-              return id != null && id.isNotEmpty && id != 'null';
-            }).toList();
-          }
-        }
-        return [];
-      }
+      if (valid.isEmpty) return [];
 
       // 2. Deduplicate by unique calendar ID
       final seenIds = <String>{};
@@ -593,24 +583,18 @@ class CalendarService {
         }
       }
 
-      // 3. Filter out purely internal/ghost calendars where both name and account are null/empty
-      final withNames = uniqueList.where((c) {
-        final hasName = c.name != null && c.name!.trim().isNotEmpty && c.name != 'null';
-        final hasAccount = c.accountName != null && c.accountName!.trim().isNotEmpty && c.accountName != 'null';
-        return hasName || hasAccount;
-      }).toList();
+      // 3. Put device default / primary calendar first (e.g. Samsung Calendar)
+      uniqueList.sort((a, b) {
+        if (a.isDefault == true && b.isDefault != true) return -1;
+        if (b.isDefault == true && a.isDefault != true) return 1;
+        final aIsLocal = a.accountType?.toLowerCase().contains('samsung') == true || a.accountName?.toLowerCase() == 'phone';
+        final bIsLocal = b.accountType?.toLowerCase().contains('samsung') == true || b.accountName?.toLowerCase() == 'phone';
+        if (aIsLocal && !bIsLocal) return -1;
+        if (bIsLocal && !aIsLocal) return 1;
+        return 0;
+      });
 
-      final candidates = withNames.isNotEmpty ? withNames : uniqueList;
-
-      // 4. Prefer explicitly writable calendars (isReadOnly == false)
-      final writable = candidates.where((c) => c.isReadOnly == false).toList();
-      if (writable.isNotEmpty) return writable;
-
-      // 5. Fallback to calendars where isReadOnly is not true
-      final nonReadOnly = candidates.where((c) => c.isReadOnly != true).toList();
-      if (nonReadOnly.isNotEmpty) return nonReadOnly;
-
-      return candidates;
+      return uniqueList;
     } catch (_) {
       return [];
     }
@@ -1447,8 +1431,8 @@ class _H extends State<Home> with WidgetsBindingObserver {
                       Text(
                         Tr.t(
                           context,
-                          'No calendar available on device or permission not granted yet.',
-                          'لا يوجد تقويم متاح على الجهاز أو لم يتم منح الإذن بعد.',
+                          'Please grant calendar permission so Awan can access your phone calendar.',
+                          'يرجى منح إذن التقويم ليتمكن أوان من الوصول إلى تقويم هاتفك.',
                         ),
                         style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 13),
                       ),
@@ -1459,23 +1443,16 @@ class _H extends State<Home> with WidgetsBindingObserver {
                         children: [
                           FilledButton.icon(
                             icon: const Icon(Icons.check_circle_outline, size: 18),
-                            label: Text(Tr.t(context, 'Grant permission & reload', 'منح الإذن وتحديث')),
+                            label: Text(Tr.t(context, 'Grant Calendar Permission', 'منح إذن التقويم')),
                             onPressed: () async {
                               await CalendarService.requestPermissions();
                               await _refreshCalendars();
                             },
                           ),
-                          FilledButton.tonalIcon(
-                            icon: const Icon(Icons.add, size: 18),
-                            label: Text(Tr.t(context, 'Create "Awan" calendar', 'إنشاء تقويم "أوان"')),
-                            onPressed: () async {
-                              final newId = await CalendarService.createLocalCalendar();
-                              if (newId != null) {
-                                st.defaultCalendarId = newId;
-                                save();
-                              }
-                              await _refreshCalendars();
-                            },
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.settings, size: 18),
+                            label: Text(Tr.t(context, 'App Settings', 'إعدادات التطبيق')),
+                            onPressed: () => openAppSettings(),
                           ),
                         ],
                       ),
