@@ -17,7 +17,7 @@ jobs:
       - name: Configure Android permissions and full-screen intent support
         run: |
           M=android/app/src/main/AndroidManifest.xml
-          P='<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/><uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/><uses-permission android:name="android.permission.DISABLE_KEYGUARD"/>'
+          P='<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/><uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/><uses-permission android:name="android.permission.DISABLE_KEYGUARD"/><uses-permission android:name="android.permission.READ_CALENDAR"/><uses-permission android:name="android.permission.WRITE_CALENDAR"/>'
           sed -i "s|<application|$P<application|" $M
           sed -i 's|<activity|<activity android:showWhenLocked="true" android:turnScreenOn="true" android:inheritShowWhenLocked="true"|' $M
           # Add alarm RING intent filter so the alarm package can launch the activity on lock screen
@@ -158,6 +158,8 @@ jobs:
               data = plistlib.load(f)
           data['UIBackgroundModes'] = ['audio', 'fetch', 'processing']
           data['NSLocationWhenInUseUsageDescription'] = 'Adhan Alarm needs your location to calculate accurate offline prayer times.'
+          data['NSCalendarsUsageDescription'] = 'Awan needs access to your calendar to add prayer alarm events.'
+          data['NSCalendarsFullAccessUsageDescription'] = 'Awan needs full calendar access to create and manage alarm events in your selected calendar.'
           data['BGTaskSchedulerPermittedIdentifiers'] = ['dev.fluttercommunity.workmanager.iOSBackgroundProcessingTask', 'dev.fluttercommunity.workmanager.iOSBackgroundFetchTask', 'daily_prayer_reschedule_task']
           with open('$PLIST', 'wb') as f:
               plistlib.dump(data, f)

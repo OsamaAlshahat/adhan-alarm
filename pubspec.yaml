@@ -17,6 +17,9 @@ dependencies:
   permission_handler: ^11.3.1
   file_picker: ^8.1.2    # choose ring sound from the device
   path_provider: ^2.1.4
+  device_calendar: ^4.3.3  # native calendar integration
+  timezone: ^0.9.4         # TZDateTime for calendar events
+  flutter_timezone: ^3.0.1 # detect device timezone
 flutter:
   uses-material-design: true
   assets:

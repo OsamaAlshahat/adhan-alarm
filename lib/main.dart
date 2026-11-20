@@ -5,13 +5,17 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:adhan/adhan.dart';
 import 'package:alarm/alarm.dart';
+import 'package:device_calendar/device_calendar.dart' as dc;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 import 'package:workmanager/workmanager.dart';
 
 const dailyRescheduleTaskKey = 'adhan_alarm_daily_reschedule';
@@ -187,6 +191,7 @@ class Settings {
   double lat = 31.2, lng = 29.92;
   String timeFormat = 'system'; // 'system', '12h', '24h'
   String language = 'system';   // 'system', 'en', 'ar'
+  String? defaultCalendarId;    // device calendar ID for "Add to Calendar"
 
   Map<String, dynamic> toJson() => {
     'country': country,
@@ -196,6 +201,7 @@ class Settings {
     'lng': lng,
     'timeFormat': timeFormat,
     'language': language,
+    'defaultCalendarId': defaultCalendarId,
   };
 
   Settings();
@@ -207,6 +213,7 @@ class Settings {
     lng = (j['lng'] as num?)?.toDouble() ?? 29.92;
     timeFormat = j['timeFormat'] ?? 'system';
     language = j['language'] ?? 'system';
+    defaultCalendarId = j['defaultCalendarId'];
   }
 }
 
@@ -223,6 +230,9 @@ class Al {
   List<int> days;    // 1 (Monday) .. 7 (Sunday)
   bool notify, vibrate, sound;
   String? soundPath, soundName;
+  bool addToCalendar;
+  String? calendarId;         // per-alarm override; null = use app default
+  Map<String, String> calEventIds; // key: "dayOffset_N", value: calendar eventId
 
   Al({
     required this.id,
@@ -240,7 +250,11 @@ class Al {
     this.sound = true,
     this.soundPath,
     this.soundName,
-  }) : days = days ?? [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday];
+    this.addToCalendar = false,
+    this.calendarId,
+    Map<String, String>? calEventIds,
+  }) : days = days ?? [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday],
+       calEventIds = calEventIds ?? {};
 
   bool get once => repeatMode == 'once';
   set once(bool v) => repeatMode = v ? 'once' : 'daily';
@@ -261,6 +275,9 @@ class Al {
     'sound': sound,
     'soundPath': soundPath,
     'soundName': soundName,
+    'addToCalendar': addToCalendar,
+    'calendarId': calendarId,
+    'calEventIds': calEventIds,
   };
 
   factory Al.from(Map<String, dynamic> j) {
@@ -286,6 +303,9 @@ class Al {
       sound: j['sound'] ?? true,
       soundPath: j['soundPath'],
       soundName: j['soundName'],
+      addToCalendar: j['addToCalendar'] ?? false,
+      calendarId: j['calendarId'],
+      calEventIds: (j['calEventIds'] as Map<String, dynamic>?)?.map((k, v) => MapEntry(k, v.toString())) ?? {},
     );
   }
 
@@ -473,6 +493,155 @@ Future<void> reschedule() async {
 
 const platformFullscreen = MethodChannel('com.adhan_alarm.app/fullscreen_settings');
 
+// ===================================================================
+// Calendar Service — best-effort sync, never blocks alarm scheduling
+// ===================================================================
+class CalendarService {
+  static final _plugin = dc.DeviceCalendarPlugin();
+
+  /// Request calendar permissions, return true if granted
+  static Future<bool> requestPermissions() async {
+    try {
+      var perms = await _plugin.hasPermissions();
+      if (perms.isSuccess && !(perms.data ?? false)) {
+        perms = await _plugin.requestPermissions();
+      }
+      return perms.isSuccess && (perms.data ?? false);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Get all writable calendars
+  static Future<List<dc.Calendar>> getWritableCalendars() async {
+    try {
+      if (!await requestPermissions()) return [];
+      final result = await _plugin.retrieveCalendars();
+      if (!result.isSuccess || result.data == null) return [];
+      return result.data!.where((c) => !(c.isReadOnly ?? true)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Get the effective calendar ID for an alarm
+  static Future<String?> effectiveCalendarId(Al alarm) async {
+    final id = alarm.calendarId ?? st.defaultCalendarId;
+    if (id != null) {
+      // Verify it still exists and is writable
+      final cals = await getWritableCalendars();
+      if (cals.any((c) => c.id == id)) return id;
+    }
+    // Fallback: first writable calendar
+    final cals = await getWritableCalendars();
+    return cals.isNotEmpty ? cals.first.id : null;
+  }
+
+  /// Create a single calendar event, return the event ID
+  static Future<String?> createEvent(String calendarId, String title, DateTime time) async {
+    try {
+      final tzName = await FlutterTimezone.getLocalTimezone();
+      final location = tz.getLocation(tzName);
+      final start = tz.TZDateTime.from(time, location);
+      final end = start.add(const Duration(minutes: 15));
+
+      final event = dc.Event(calendarId,
+        title: title,
+        start: start,
+        end: end,
+        description: 'Created by أوان (Awan)',
+      );
+      final result = await _plugin.createOrUpdateEvent(event);
+      if (result != null && result.isSuccess) return result.data;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Delete a single calendar event
+  static Future<void> deleteEvent(String calendarId, String eventId) async {
+    try {
+      await _plugin.deleteEvent(calendarId, eventId);
+    } catch (_) {
+      // best effort
+    }
+  }
+
+  /// Sync all upcoming occurrences of an alarm to the calendar
+  static Future<void> syncAlarmToCalendar(Al alarm) async {
+    try {
+      final calId = await effectiveCalendarId(alarm);
+      if (calId == null) return;
+
+      // Remove old events first
+      await removeAlarmFromCalendar(alarm);
+
+      final now = DateTime.now();
+      final title = alarm.label.isNotEmpty
+          ? alarm.label
+          : (alarm.prayer ? '${alarm.p} alarm' : 'Awan alarm');
+
+      final newEventIds = <String, String>{};
+      for (var i = 0; i < 14; i++) {
+        final targetDate = now.add(Duration(days: i));
+        final at = ringAt(alarm, targetDate);
+        if (!at.isAfter(now)) continue;
+
+        // Filter by specific days if custom
+        if (alarm.repeatMode == 'custom' && !alarm.days.contains(targetDate.weekday)) continue;
+
+        final eventId = await createEvent(calId, title, at);
+        if (eventId != null) {
+          newEventIds['day_$i'] = eventId;
+        }
+
+        // Once mode: only one occurrence
+        if (alarm.repeatMode == 'once' && newEventIds.isNotEmpty) break;
+      }
+
+      alarm.calEventIds = newEventIds;
+      // Store the calendar ID actually used
+      if (alarm.calendarId == null && calId != st.defaultCalendarId) {
+        alarm.calendarId = calId;
+      }
+    } catch (_) {
+      // best effort — never disrupt alarm scheduling
+    }
+  }
+
+  /// Remove all calendar events created by this alarm
+  static Future<void> removeAlarmFromCalendar(Al alarm) async {
+    try {
+      if (alarm.calEventIds.isEmpty) return;
+      final calId = alarm.calendarId ?? st.defaultCalendarId;
+      if (calId == null) return;
+      for (final eventId in alarm.calEventIds.values) {
+        await deleteEvent(calId, eventId);
+      }
+      alarm.calEventIds.clear();
+    } catch (_) {
+      // best effort
+    }
+  }
+}
+
+/// Sync all alarms' calendar events (fire-and-forget after reschedule)
+Future<void> syncAllCalendarEvents() async {
+  try {
+    for (final a in alarms) {
+      if (a.on && a.addToCalendar) {
+        await CalendarService.syncAlarmToCalendar(a);
+      } else if (a.calEventIds.isNotEmpty) {
+        await CalendarService.removeAlarmFromCalendar(a);
+      }
+    }
+    save();
+  } catch (_) {
+    // never crash
+  }
+}
+
 Future<bool> canUseFullScreenIntent() async {
   if (!Platform.isAndroid) return true;
   try {
@@ -632,6 +801,16 @@ class RingScreen extends StatelessWidget {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize timezone database
+  tz.initializeTimeZones();
+  try {
+    final tzName = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(tzName));
+  } catch (_) {
+    // fallback to UTC if timezone detection fails
+  }
+
   prefs = await SharedPreferences.getInstance();
   final s = prefs.getString('st');
   if (s != null) st = Settings.from(jsonDecode(s));
@@ -651,6 +830,9 @@ Future<void> main() async {
   }
 
   await reschedule();
+
+  // Fire-and-forget calendar sync
+  syncAllCalendarEvents();
 
   // Initialize periodic background worker (guarded for Android & iOS)
   try {
@@ -967,12 +1149,24 @@ class _H extends State<Home> with WidgetsBindingObserver {
                       a.on = v;
                       save();
                       await reschedule();
+                      // Remove calendar events when alarm is turned off
+                      if (!v && a.calEventIds.isNotEmpty) {
+                        CalendarService.removeAlarmFromCalendar(a).then((_) => save());
+                      }
+                      // Re-sync calendar events when alarm is turned on
+                      if (v && a.addToCalendar) {
+                        CalendarService.syncAlarmToCalendar(a).then((_) => save());
+                      }
                       setState(() {});
                     },
                   ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () async {
+                      // Remove calendar events before deleting alarm
+                      if (a.calEventIds.isNotEmpty) {
+                        await CalendarService.removeAlarmFromCalendar(a);
+                      }
                       alarms.remove(a);
                       save();
                       await reschedule();
@@ -1177,6 +1371,95 @@ class _H extends State<Home> with WidgetsBindingObserver {
             ),
           ),
         ],
+        // ===== Calendar Integration Section =====
+        const SizedBox(height: 24),
+        Text(Tr.t(context, 'Calendar integration', 'ربط التقويم'), style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Card(
+          margin: EdgeInsets.zero,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  Tr.t(
+                    context,
+                    'Select a default calendar for alarms with "Add to Calendar" enabled. Each alarm event will appear in your chosen calendar.',
+                    'اختر تقويماً افتراضياً للمنبهات التي تم تفعيل "إضافة للتقويم" لها. ستظهر أحداث المنبه في التقويم المختار.',
+                  ),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                FutureBuilder<List<dc.Calendar>>(
+                  future: CalendarService.getWritableCalendars(),
+                  builder: (ctx, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                      );
+                    }
+                    final calendars = snapshot.data ?? [];
+                    if (calendars.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Text(
+                          Tr.t(ctx, 'No writable calendars found. Please grant calendar permission.',
+                              'لم يتم العثور على تقويم قابل للكتابة. يرجى منح إذن التقويم.'),
+                          style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 12),
+                        ),
+                      );
+                    }
+                    // Check if saved ID still valid
+                    final validIds = calendars.map((c) => c.id).toSet();
+                    final currentId = st.defaultCalendarId;
+                    final isCurrentValid = currentId != null && validIds.contains(currentId);
+                    if (!isCurrentValid && currentId != null) {
+                      // Previously saved calendar no longer available
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          setState(() { st.defaultCalendarId = null; });
+                          save();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(Tr.t(context,
+                              'Previously selected calendar is no longer available. Please choose another.',
+                              'التقويم المختار سابقاً لم يعد متاحاً. يرجى اختيار تقويم آخر.'))),
+                          );
+                        }
+                      });
+                    }
+                    return DropdownButtonFormField<String>(
+                      value: isCurrentValid ? currentId : (calendars.isNotEmpty ? calendars.first.id : null),
+                      decoration: InputDecoration(
+                        labelText: Tr.t(ctx, 'Default calendar', 'التقويم الافتراضي'),
+                        prefixIcon: const Icon(Icons.calendar_month),
+                      ),
+                      items: [
+                        for (final cal in calendars)
+                          DropdownMenuItem(
+                            value: cal.id,
+                            child: Text(
+                              '${cal.name ?? cal.id}${cal.accountName != null ? ' (${cal.accountName})' : ''}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() { st.defaultCalendarId = v; });
+                        save();
+                        // Re-sync all calendar-enabled alarms with new default
+                        syncAllCalendarEvents();
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1603,6 +1886,71 @@ class _H extends State<Home> with WidgetsBindingObserver {
                               ),
                         onTap: () => pickSound(e, set),
                       ),
+                    // =========================================================
+                    // CALENDAR INTEGRATION
+                    // =========================================================
+                    const SizedBox(height: 14),
+                    Text(Tr.t(ctx, 'Calendar', 'التقويم'), style: Theme.of(ctx).textTheme.titleSmall),
+                    const SizedBox(height: 6),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(Tr.t(ctx, 'Add to Calendar', 'إضافة للتقويم')),
+                      subtitle: Text(Tr.t(ctx, 'Create events in your device calendar', 'إنشاء أحداث في تقويم الجهاز')),
+                      secondary: const Icon(Icons.calendar_month),
+                      value: e.addToCalendar,
+                      onChanged: (v) => set(() => e.addToCalendar = v),
+                    ),
+                    if (e.addToCalendar)
+                      FutureBuilder<List<dc.Calendar>>(
+                        future: CalendarService.getWritableCalendars(),
+                        builder: (fbCtx, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                            );
+                          }
+                          final calendars = snapshot.data ?? [];
+                          if (calendars.isEmpty) {
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                Tr.t(fbCtx, 'No writable calendars available', 'لا يوجد تقويم قابل للكتابة'),
+                                style: TextStyle(color: Theme.of(fbCtx).colorScheme.error, fontSize: 12),
+                              ),
+                            );
+                          }
+                          final effectiveId = e.calendarId ?? st.defaultCalendarId;
+                          final validIds = calendars.map((c) => c.id).toSet();
+                          final selectedId = (effectiveId != null && validIds.contains(effectiveId))
+                              ? effectiveId
+                              : calendars.first.id;
+                          return DropdownButtonFormField<String>(
+                            value: selectedId,
+                            decoration: InputDecoration(
+                              labelText: Tr.t(fbCtx, 'Calendar for this alarm', 'التقويم لهذا المنبه'),
+                              prefixIcon: const Icon(Icons.event_note),
+                              helperText: Tr.t(fbCtx, 'Override the default calendar', 'تجاوز التقويم الافتراضي'),
+                            ),
+                            items: [
+                              for (final cal in calendars)
+                                DropdownMenuItem(
+                                  value: cal.id,
+                                  child: Text(
+                                    '${cal.name ?? cal.id}${cal.accountName != null ? ' (${cal.accountName})' : ''}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (v) {
+                              set(() {
+                                // If same as default, store null (use default)
+                                e.calendarId = (v == st.defaultCalendarId) ? null : v;
+                              });
+                            },
+                          );
+                        },
+                      ),
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
@@ -1629,6 +1977,12 @@ class _H extends State<Home> with WidgetsBindingObserver {
                                 }
                                 save();
                                 await reschedule();
+                                // Fire-and-forget calendar sync
+                                if (e.addToCalendar) {
+                                  CalendarService.syncAlarmToCalendar(e).then((_) => save());
+                                } else if (e.calEventIds.isNotEmpty) {
+                                  CalendarService.removeAlarmFromCalendar(e).then((_) => save());
+                                }
                                 if (mounted) {
                                   setState(() {});
                                   Navigator.pop(ctx);
