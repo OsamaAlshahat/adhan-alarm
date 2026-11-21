@@ -1305,6 +1305,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
             });
             save();
             reschedule();
+            syncAllCalendarEvents();
           },
         ),
         const SizedBox(height: 12),
@@ -1325,6 +1326,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
             });
             save();
             reschedule();
+            syncAllCalendarEvents();
           },
         ),
         const SizedBox(height: 12),
@@ -1349,6 +1351,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
             setState(() => st.method = v);
             save();
             reschedule();
+            syncAllCalendarEvents();
           },
         ),
         if (Platform.isAndroid) ...[
@@ -1602,6 +1605,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
     });
     save();
     await reschedule();
+    syncAllCalendarEvents();
     m.showSnackBar(SnackBar(content: Text('${Tr.t(context, "Location set: ", "تم تحديد الموقع: ")}${Tr.city(context, st.city)}')));
   }
 
