@@ -1653,6 +1653,8 @@ class _H extends State<Home> with WidgetsBindingObserver {
     int offsetHours = e.mins ~/ 60;
     int offsetMinutes = e.mins % 60;
     int signChoice = e.mins == 0 ? 0 : e.sign;
+    int calDurationHours = (e.calDuration > 0 ? e.calDuration : 15) ~/ 60;
+    int calDurationMinutes = (e.calDuration > 0 ? e.calDuration : 15) % 60;
 
     showModalBottomSheet(
       context: context,
@@ -2018,56 +2020,167 @@ class _H extends State<Home> with WidgetsBindingObserver {
                       },
                     ),
                     if (e.addToCalendar) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        Tr.t(ctx, 'Event duration (meeting length)', 'مدة الحدث في التقويم (فترة الاجتماع)'),
+                        style: Theme.of(ctx).textTheme.titleSmall,
+                      ),
                       const SizedBox(height: 8),
-                      DropdownButtonFormField<int>(
-                        value: [10, 15, 20, 30, 45, 60, 90, 120, 180].contains(e.calDuration)
-                            ? e.calDuration
-                            : (e.calDuration > 0 ? e.calDuration : 15),
-                        decoration: InputDecoration(
-                          labelText: Tr.t(ctx, 'Event duration (meeting length)', 'مدة الحدث (فترة الاجتماع)'),
-                          prefixIcon: const Icon(Icons.timer_outlined),
-                          helperText: Tr.t(ctx, 'How long this block lasts in your calendar schedule', 'كم تستغرق الفترة المحجوزة في تقويمك'),
+
+                      // Hours & Minutes Picker Card for Calendar Duration
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.5)),
                         ),
-                        items: [
-                          for (final d in [10, 15, 20, 30, 45, 60, 90, 120, 180])
-                            DropdownMenuItem(
-                              value: d,
-                              child: Text(formatCalDuration(ctx, d)),
-                            ),
-                          if (![10, 15, 20, 30, 45, 60, 90, 120, 180].contains(e.calDuration) && e.calDuration > 0)
-                            DropdownMenuItem(
-                              value: e.calDuration,
-                              child: Text(formatCalDuration(ctx, e.calDuration)),
-                            ),
-                          DropdownMenuItem(
-                            value: -1,
-                            child: Row(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            // Hours Stepper
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.edit, size: 16),
-                                const SizedBox(width: 8),
-                                Text(Tr.t(ctx, 'Custom duration...', 'مدة مخصصة...')),
+                                Text(Tr.t(ctx, 'Hours', 'ساعات'), style: Theme.of(ctx).textTheme.labelMedium),
+                                const SizedBox(height: 6),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton.filledTonal(
+                                      icon: const Icon(Icons.remove, size: 18),
+                                      onPressed: calDurationHours > 0 ? () => set(() {
+                                        calDurationHours--;
+                                        if (calDurationHours == 0 && calDurationMinutes == 0) {
+                                          calDurationMinutes = 15;
+                                        }
+                                        e.calDuration = calDurationHours * 60 + calDurationMinutes;
+                                      }) : null,
+                                    ),
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(8),
+                                      onTap: () async {
+                                        final val = await showNumberInputDialog(ctx, title: Tr.t(ctx, 'Hours', 'ساعات'), current: calDurationHours, max: 24);
+                                        if (val != null) set(() {
+                                          calDurationHours = val;
+                                          if (calDurationHours == 0 && calDurationMinutes == 0) {
+                                            calDurationMinutes = 15;
+                                          }
+                                          e.calDuration = calDurationHours * 60 + calDurationMinutes;
+                                        });
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                        child: Text(
+                                          '$calDurationHours',
+                                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton.filledTonal(
+                                      icon: const Icon(Icons.add, size: 18),
+                                      onPressed: calDurationHours < 24 ? () => set(() {
+                                        calDurationHours++;
+                                        e.calDuration = calDurationHours * 60 + calDurationMinutes;
+                                      }) : null,
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
-                          ),
-                        ],
-                        onChanged: (v) async {
-                          if (v == null) return;
-                          if (v == -1) {
-                            final custom = await showNumberInputDialog(
-                              ctx,
-                              title: Tr.t(ctx, 'Custom duration (minutes)', 'مدة مخصصة (بالدقائق)'),
-                              current: e.calDuration > 0 ? e.calDuration : 30,
-                              max: 720,
-                            );
-                            if (custom != null && custom > 0) {
-                              set(() => e.calDuration = custom);
-                            }
-                          } else {
-                            set(() => e.calDuration = v);
-                          }
-                        },
+
+                            Padding(
+                              padding: const EdgeInsets.only(top: 18),
+                              child: Text(':', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Theme.of(ctx).colorScheme.outline)),
+                            ),
+
+                            // Minutes Stepper
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(Tr.t(ctx, 'Minutes', 'دقائق'), style: Theme.of(ctx).textTheme.labelMedium),
+                                const SizedBox(height: 6),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton.filledTonal(
+                                      icon: const Icon(Icons.remove, size: 18),
+                                      onPressed: (calDurationMinutes > 1 || calDurationHours > 0) ? () => set(() {
+                                        if (calDurationMinutes > 0) {
+                                          if (calDurationHours == 0 && calDurationMinutes <= 1) return;
+                                          calDurationMinutes--;
+                                        } else if (calDurationHours > 0) {
+                                          calDurationHours--;
+                                          calDurationMinutes = 59;
+                                        }
+                                        e.calDuration = calDurationHours * 60 + calDurationMinutes;
+                                      }) : null,
+                                    ),
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(8),
+                                      onTap: () async {
+                                        final val = await showNumberInputDialog(ctx, title: Tr.t(ctx, 'Minutes', 'دقائق'), current: calDurationMinutes, max: 59);
+                                        if (val != null) set(() {
+                                          calDurationMinutes = val;
+                                          if (calDurationHours == 0 && calDurationMinutes == 0) {
+                                            calDurationMinutes = 1;
+                                          }
+                                          e.calDuration = calDurationHours * 60 + calDurationMinutes;
+                                        });
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                        child: Text(
+                                          calDurationMinutes.toString().padLeft(2, '0'),
+                                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton.filledTonal(
+                                      icon: const Icon(Icons.add, size: 18),
+                                      onPressed: () => set(() {
+                                        if (calDurationMinutes < 59) {
+                                          calDurationMinutes++;
+                                        } else if (calDurationHours < 24) {
+                                          calDurationHours++;
+                                          calDurationMinutes = 0;
+                                        }
+                                        e.calDuration = calDurationHours * 60 + calDurationMinutes;
+                                      }),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 12),
+
+                      // Live duration preview
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(top: 8, bottom: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).colorScheme.primaryContainer.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.timelapse, size: 18, color: Theme.of(ctx).colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${Tr.t(ctx, "Meeting duration: ", "مدة الاجتماع / الحدث: ")}${formatCalDuration(ctx, (calDurationHours * 60 + calDurationMinutes) > 0 ? (calDurationHours * 60 + calDurationMinutes) : 15)}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Theme.of(ctx).colorScheme.onPrimaryContainer,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
                       if (_availableCalendars != null && _availableCalendars!.isNotEmpty) ...[
                         DropdownButtonFormField<String>(
                           value: (e.calendarId != null && _availableCalendars!.any((c) => c.id == e.calendarId))
@@ -2159,6 +2272,10 @@ class _H extends State<Home> with WidgetsBindingObserver {
                                     e.sign = signChoice;
                                     e.mins = offsetHours * 60 + offsetMinutes;
                                   }
+                                }
+                                if (e.addToCalendar) {
+                                  final dur = calDurationHours * 60 + calDurationMinutes;
+                                  e.calDuration = dur > 0 ? dur : 15;
                                 }
                                 e.label = lbl.text.trim();
                                 e.on = true;
