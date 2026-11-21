@@ -235,6 +235,7 @@ class Al {
   String? soundPath, soundName;
   bool addToCalendar;
   String? calendarId;         // per-alarm override; null = use app default
+  int calDuration;            // duration in minutes for calendar events (default: 15)
   Map<String, String> calEventIds; // key: "dayOffset_N", value: calendar eventId
 
   Al({
@@ -255,6 +256,7 @@ class Al {
     this.soundName,
     this.addToCalendar = false,
     this.calendarId,
+    this.calDuration = 15,
     Map<String, String>? calEventIds,
   }) : days = days ?? [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday],
        calEventIds = calEventIds ?? {};
@@ -280,6 +282,7 @@ class Al {
     'soundName': soundName,
     'addToCalendar': addToCalendar,
     'calendarId': calendarId,
+    'calDuration': calDuration,
     'calEventIds': calEventIds,
   };
 
@@ -308,6 +311,7 @@ class Al {
       soundName: j['soundName'],
       addToCalendar: j['addToCalendar'] ?? false,
       calendarId: j['calendarId'],
+      calDuration: (j['calDuration'] as num?)?.toInt() ?? 15,
       calEventIds: (j['calEventIds'] as Map<String, dynamic>?)?.map((k, v) => MapEntry(k, v.toString())) ?? {},
     );
   }
@@ -440,6 +444,29 @@ String formatTime(DateTime d, [BuildContext? context]) {
   final ar = Tr.isAr(context);
   final period = d.hour < 12 ? (ar ? 'ص' : 'AM') : (ar ? 'م' : 'PM');
   return '$h:$m $period';
+}
+
+String formatCalDuration(BuildContext ctx, int minutes) {
+  final ar = Tr.isAr(ctx);
+  if (minutes < 60) {
+    return ar ? '$minutes دقيقة' : '$minutes min';
+  } else if (minutes == 60) {
+    return ar ? 'ساعة (60 د)' : '1 hour';
+  } else if (minutes == 90) {
+    return ar ? 'ساعة ونصف (90 د)' : '1.5 hours (90 min)';
+  } else if (minutes == 120) {
+    return ar ? 'ساعتان (120 د)' : '2 hours';
+  } else if (minutes == 180) {
+    return ar ? '3 ساعات (180 د)' : '3 hours';
+  } else {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    if (m == 0) {
+      return ar ? '$h ساعات' : '$h hours';
+    } else {
+      return ar ? '$h س و $m د' : '${h}h ${m}m';
+    }
+  }
 }
 
 /// Prayer times change every day, so we pre-schedule the next 14 days as exact
@@ -617,7 +644,7 @@ class CalendarService {
   }
 
   /// Create a single calendar event, return the event ID
-  static Future<String?> createEvent(String calendarId, String title, DateTime time) async {
+  static Future<String?> createEvent(String calendarId, String title, DateTime time, {int durationMinutes = 15}) async {
     try {
       tz.Location location;
       try {
@@ -627,7 +654,8 @@ class CalendarService {
         location = tz.local;
       }
       final start = tz.TZDateTime.from(time, location);
-      final end = start.add(const Duration(minutes: 15));
+      final dur = durationMinutes > 0 ? durationMinutes : 15;
+      final end = start.add(Duration(minutes: dur));
 
       final event = dc.Event(calendarId,
         title: title,
@@ -676,7 +704,7 @@ class CalendarService {
         // Filter by specific days if custom
         if (alarm.repeatMode == 'custom' && !alarm.days.contains(targetDate.weekday)) continue;
 
-        final eventId = await createEvent(calId, title, at);
+        final eventId = await createEvent(calId, title, at, durationMinutes: alarm.calDuration);
         if (eventId != null) {
           newEventIds['day_$i'] = eventId;
         }
@@ -1990,6 +2018,56 @@ class _H extends State<Home> with WidgetsBindingObserver {
                       },
                     ),
                     if (e.addToCalendar) ...[
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<int>(
+                        value: [10, 15, 20, 30, 45, 60, 90, 120, 180].contains(e.calDuration)
+                            ? e.calDuration
+                            : (e.calDuration > 0 ? e.calDuration : 15),
+                        decoration: InputDecoration(
+                          labelText: Tr.t(ctx, 'Event duration (meeting length)', 'مدة الحدث (فترة الاجتماع)'),
+                          prefixIcon: const Icon(Icons.timer_outlined),
+                          helperText: Tr.t(ctx, 'How long this block lasts in your calendar schedule', 'كم تستغرق الفترة المحجوزة في تقويمك'),
+                        ),
+                        items: [
+                          for (final d in [10, 15, 20, 30, 45, 60, 90, 120, 180])
+                            DropdownMenuItem(
+                              value: d,
+                              child: Text(formatCalDuration(ctx, d)),
+                            ),
+                          if (![10, 15, 20, 30, 45, 60, 90, 120, 180].contains(e.calDuration) && e.calDuration > 0)
+                            DropdownMenuItem(
+                              value: e.calDuration,
+                              child: Text(formatCalDuration(ctx, e.calDuration)),
+                            ),
+                          DropdownMenuItem(
+                            value: -1,
+                            child: Row(
+                              children: [
+                                const Icon(Icons.edit, size: 16),
+                                const SizedBox(width: 8),
+                                Text(Tr.t(ctx, 'Custom duration...', 'مدة مخصصة...')),
+                              ],
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) async {
+                          if (v == null) return;
+                          if (v == -1) {
+                            final custom = await showNumberInputDialog(
+                              ctx,
+                              title: Tr.t(ctx, 'Custom duration (minutes)', 'مدة مخصصة (بالدقائق)'),
+                              current: e.calDuration > 0 ? e.calDuration : 30,
+                              max: 720,
+                            );
+                            if (custom != null && custom > 0) {
+                              set(() => e.calDuration = custom);
+                            }
+                          } else {
+                            set(() => e.calDuration = v);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
                       if (_availableCalendars != null && _availableCalendars!.isNotEmpty) ...[
                         DropdownButtonFormField<String>(
                           value: (e.calendarId != null && _availableCalendars!.any((c) => c.id == e.calendarId))
