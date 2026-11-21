@@ -235,12 +235,13 @@ class Al {
   String? soundPath, soundName;
   bool addToCalendar;
   String? calendarId;         // per-alarm override; null = use app default
-  int calDuration;            // duration in minutes for calendar events (default: 15)
+  int calDuration;            // duration in minutes for calendar events (default: 0)
+  int? calHorizonDays;        // per-alarm horizon in days; null = use app default
   Map<String, String> calEventIds; // key: "dayOffset_N", value: calendar eventId
 
   Al({
     required this.id,
-    this.prayer = false,
+    this.prayer = true,
     this.minutes = 420,
     this.p = 'fajr',
     this.sign = 1,
@@ -256,7 +257,8 @@ class Al {
     this.soundName,
     this.addToCalendar = false,
     this.calendarId,
-    this.calDuration = 15,
+    this.calDuration = 0,
+    this.calHorizonDays,
     Map<String, String>? calEventIds,
   }) : days = days ?? [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday],
        calEventIds = calEventIds ?? {};
@@ -283,6 +285,7 @@ class Al {
     'addToCalendar': addToCalendar,
     'calendarId': calendarId,
     'calDuration': calDuration,
+    'calHorizonDays': calHorizonDays,
     'calEventIds': calEventIds,
   };
 
@@ -295,7 +298,7 @@ class Al {
 
     return Al(
       id: j['id'],
-      prayer: j['prayer'] ?? false,
+      prayer: j['prayer'] ?? true,
       minutes: j['minutes'] ?? 420,
       p: j['p'] ?? 'fajr',
       sign: j['sign'] ?? 1,
@@ -311,7 +314,8 @@ class Al {
       soundName: j['soundName'],
       addToCalendar: j['addToCalendar'] ?? false,
       calendarId: j['calendarId'],
-      calDuration: (j['calDuration'] as num?)?.toInt() ?? 15,
+      calDuration: (j['calDuration'] as num?)?.toInt() ?? 0,
+      calHorizonDays: (j['calHorizonDays'] as num?)?.toInt(),
       calEventIds: (j['calEventIds'] as Map<String, dynamic>?)?.map((k, v) => MapEntry(k, v.toString())) ?? {},
     );
   }
@@ -448,7 +452,9 @@ String formatTime(DateTime d, [BuildContext? context]) {
 
 String formatCalDuration(BuildContext ctx, int minutes) {
   final ar = Tr.isAr(ctx);
-  if (minutes < 60) {
+  if (minutes <= 0) {
+    return ar ? '0 دقيقة (تنبيه فقط)' : '0 min (reminder)';
+  } else if (minutes < 60) {
     return ar ? '$minutes دقيقة' : '$minutes min';
   } else if (minutes == 60) {
     return ar ? 'ساعة (60 د)' : '1 hour';
@@ -644,7 +650,7 @@ class CalendarService {
   }
 
   /// Create a single calendar event, return the event ID
-  static Future<String?> createEvent(String calendarId, String title, DateTime time, {int durationMinutes = 15}) async {
+  static Future<String?> createEvent(String calendarId, String title, DateTime time, {int durationMinutes = 0}) async {
     try {
       tz.Location location;
       try {
@@ -654,7 +660,7 @@ class CalendarService {
         location = tz.local;
       }
       final start = tz.TZDateTime.from(time, location);
-      final dur = durationMinutes > 0 ? durationMinutes : 15;
+      final dur = durationMinutes >= 0 ? durationMinutes : 0;
       final end = start.add(Duration(minutes: dur));
 
       final event = dc.Event(calendarId,
@@ -695,7 +701,10 @@ class CalendarService {
           : (alarm.prayer ? '${alarm.p} alarm' : 'Awan alarm');
 
       final newEventIds = <String, String>{};
-      final horizon = (st.calendarHorizonDays > 0) ? st.calendarHorizonDays : 30;
+      final alarmHorizon = alarm.calHorizonDays;
+      final horizon = (alarmHorizon != null && alarmHorizon > 0)
+          ? alarmHorizon
+          : ((st.calendarHorizonDays > 0) ? st.calendarHorizonDays : 30);
       for (var i = 0; i < horizon; i++) {
         final targetDate = now.add(Duration(days: i));
         final at = ringAt(alarm, targetDate);
@@ -1032,6 +1041,7 @@ class Home extends StatefulWidget {
 
 class _H extends State<Home> with WidgetsBindingObserver {
   int tab = 0;
+  String _alarmFilter = 'all'; // 'all', 'calendar', 'normal'
   StreamSubscription<AlarmSettings>? sub;
   List<dc.Calendar>? _availableCalendars;
   bool _loadingCalendars = false;
@@ -1141,6 +1151,12 @@ class _H extends State<Home> with WidgetsBindingObserver {
 
   Widget alarmsView() {
     final t = timesFor(DateTime.now());
+    final filteredAlarms = alarms.where((a) {
+      if (_alarmFilter == 'calendar') return a.addToCalendar;
+      if (_alarmFilter == 'normal') return !a.addToCalendar;
+      return true;
+    }).toList();
+
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
@@ -1165,6 +1181,35 @@ class _H extends State<Home> with WidgetsBindingObserver {
             ),
           ),
         ),
+        const SizedBox(height: 10),
+
+        // Filter Bar (Calendar / Normal / All)
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<String>(
+            segments: [
+              ButtonSegment(
+                value: 'all',
+                label: Text(Tr.t(context, 'All', 'الكل')),
+                icon: const Icon(Icons.apps, size: 16),
+              ),
+              ButtonSegment(
+                value: 'calendar',
+                label: Text(Tr.t(context, 'Calendar', 'التقويم')),
+                icon: const Icon(Icons.calendar_month, size: 16),
+              ),
+              ButtonSegment(
+                value: 'normal',
+                label: Text(Tr.t(context, 'Normal', 'عادي')),
+                icon: const Icon(Icons.alarm, size: 16),
+              ),
+            ],
+            selected: {_alarmFilter},
+            onSelectionChanged: (s) => setState(() => _alarmFilter = s.first),
+          ),
+        ),
+        const SizedBox(height: 8),
+
         if (alarms.isEmpty)
           Padding(
             padding: const EdgeInsets.all(28),
@@ -1174,14 +1219,59 @@ class _H extends State<Home> with WidgetsBindingObserver {
                 textAlign: TextAlign.center,
               ),
             ),
+          )
+        else if (filteredAlarms.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(28),
+            child: Center(
+              child: Text(
+                _alarmFilter == 'calendar'
+                    ? Tr.t(context, 'No alarms with calendar sync.', 'لا توجد منبهات مرتبطة بالتقويم.')
+                    : Tr.t(context, 'No normal alarms without calendar.', 'لا توجد منبهات عادية بدون تقويم.'),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Theme.of(context).colorScheme.outline),
+              ),
+            ),
           ),
-        for (final a in alarms)
+        for (final a in filteredAlarms)
           Card(
             child: ListTile(
               onTap: () => openSheet(a),
-              title: Text(
-                formatTime(ringAt(a, DateTime.now()), context),
-                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w400),
+              title: Row(
+                children: [
+                  Text(
+                    formatTime(ringAt(a, DateTime.now()), context),
+                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w400),
+                  ),
+                  const Spacer(),
+                  if (a.addToCalendar)
+                    Container(
+                      margin: const EdgeInsets.only(right: 4, left: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.calendar_month, size: 13, color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 4),
+                          Text(
+                            Tr.t(context, 'Calendar', 'في التقويم'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
               subtitle: Text(
                 '${a.label.isEmpty ? '' : '${a.label} · '}${a.desc(context)} · ${a.repeatText(context)}\n${a.actions(context)}',
@@ -1525,12 +1615,12 @@ class _H extends State<Home> with WidgetsBindingObserver {
                         ? st.calendarHorizonDays
                         : 30,
                     decoration: InputDecoration(
-                      labelText: Tr.t(context, 'Calendar sync horizon', 'أفق مزامنة التقويم'),
+                      labelText: Tr.t(context, 'Schedule ahead for (default)', 'إضافة للتقويم مسبقاً لمدة (افتراضي)'),
                       prefixIcon: const Icon(Icons.date_range),
                       helperText: Tr.t(
                         context,
-                        'Precalculates prayer times for this period in your calendar',
-                        'يقوم بحساب مواقيت الصلاة مسبقاً وتدوينها في التقويم لهذه المدة',
+                        'Default period to precalculate events for calendar alarms',
+                        'الفترة الافتراضية لحساب وإضافة الأحداث للتقويم مسبقاً',
                       ),
                       helperMaxLines: 2,
                     ),
@@ -1652,13 +1742,17 @@ class _H extends State<Home> with WidgetsBindingObserver {
   }
 
   void openSheet([Al? existing]) {
-    final e = existing?.copy() ?? Al(id: (alarms.isEmpty ? 0 : alarms.map((x) => x.id).reduce(max)) + 1);
+    final e = existing?.copy() ?? Al(
+      id: (alarms.isEmpty ? 0 : alarms.map((x) => x.id).reduce(max)) + 1,
+      prayer: true,
+      calDuration: 0,
+    );
     final lbl = TextEditingController(text: e.label);
     int offsetHours = e.mins ~/ 60;
     int offsetMinutes = e.mins % 60;
     int signChoice = e.mins == 0 ? 0 : e.sign;
-    int calDurationHours = (e.calDuration > 0 ? e.calDuration : 15) ~/ 60;
-    int calDurationMinutes = (e.calDuration > 0 ? e.calDuration : 15) % 60;
+    int calDurationHours = e.calDuration ~/ 60;
+    int calDurationMinutes = e.calDuration % 60;
 
     showModalBottomSheet(
       context: context,
@@ -1921,35 +2015,130 @@ class _H extends State<Home> with WidgetsBindingObserver {
                     ),
                     if (e.repeatMode == 'custom') ...[
                       const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final item in (Tr.isAr(ctx) ? weekDaysAr : weekDaysEn))
-                            FilterChip(
-                              label: Text(item['name'] as String),
-                              selected: e.days.contains(item['day']),
-                              onSelected: (selected) {
-                                set(() {
-                                  final d = item['day'] as int;
-                                  if (selected) {
-                                    if (!e.days.contains(d)) e.days.add(d);
-                                  } else {
-                                    e.days.remove(d);
-                                  }
-                                });
-                              },
+
+                      // Quick preset buttons
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            ActionChip(
+                              label: Text(Tr.t(ctx, 'Weekdays', 'أيام العمل')),
+                              avatar: const Icon(Icons.work_outline, size: 14),
+                              onPressed: () => set(() {
+                                e.days = Tr.isAr(ctx)
+                                    ? [DateTime.sunday, DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday]
+                                    : [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday];
+                              }),
                             ),
-                        ],
-                      ),
-                      if (e.days.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            Tr.t(ctx, 'Please select at least one day', 'يرجى اختيار يوم واحد على الأقل'),
-                            style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 12),
-                          ),
+                            const SizedBox(width: 6),
+                            ActionChip(
+                              label: Text(Tr.t(ctx, 'Weekend', 'عطلة الأسبوع')),
+                              avatar: const Icon(Icons.weekend_outlined, size: 14),
+                              onPressed: () => set(() {
+                                e.days = Tr.isAr(ctx)
+                                    ? [DateTime.friday, DateTime.saturday]
+                                    : [DateTime.saturday, DateTime.sunday];
+                              }),
+                            ),
+                            const SizedBox(width: 6),
+                            ActionChip(
+                              label: Text(Tr.t(ctx, 'All', 'الكل')),
+                              avatar: const Icon(Icons.done_all, size: 14),
+                              onPressed: () => set(() {
+                                e.days = [1, 2, 3, 4, 5, 6, 7];
+                              }),
+                            ),
+                            const SizedBox(width: 6),
+                            ActionChip(
+                              label: Text(Tr.t(ctx, 'Clear', 'مسح')),
+                              avatar: const Icon(Icons.clear, size: 14),
+                              onPressed: () => set(() {
+                                e.days.clear();
+                              }),
+                            ),
+                          ],
                         ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Circular 7-day row
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.35),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.4)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            for (final item in (Tr.isAr(ctx) ? weekDaysAr : weekDaysEn)) ...[
+                              Builder(
+                                builder: (_) {
+                                  final day = item['day'] as int;
+                                  final isSelected = e.days.contains(day);
+                                  final label = item['short'] as String;
+                                  return Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                                      child: Material(
+                                        color: isSelected
+                                            ? Theme.of(ctx).colorScheme.primary
+                                            : Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                                        shape: const CircleBorder(),
+                                        elevation: isSelected ? 2 : 0,
+                                        child: InkWell(
+                                          customBorder: const CircleBorder(),
+                                          onTap: () => set(() {
+                                            if (isSelected) {
+                                              e.days.remove(day);
+                                            } else {
+                                              e.days.add(day);
+                                            }
+                                          }),
+                                          child: SizedBox(
+                                            height: 44,
+                                            child: Center(
+                                              child: Text(
+                                                label,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: Tr.isAr(ctx) ? 12 : 13,
+                                                  color: isSelected
+                                                      ? Theme.of(ctx).colorScheme.onPrimary
+                                                      : Theme.of(ctx).colorScheme.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      // Summary or Error
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, left: 4, right: 4),
+                        child: e.days.isEmpty
+                            ? Text(
+                                Tr.t(ctx, 'Please select at least one day', 'يرجى اختيار يوم واحد على الأقل'),
+                                style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 12),
+                              )
+                            : Text(
+                                '${Tr.t(ctx, "Repeats: ", "التكرار: ")}${e.repeatText(ctx)}',
+                                style: TextStyle(
+                                  color: Theme.of(ctx).colorScheme.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                      ),
                     ],
 
                     const SizedBox(height: 14),
@@ -2011,8 +2200,8 @@ class _H extends State<Home> with WidgetsBindingObserver {
                       title: Text(Tr.t(ctx, 'Add to Calendar', 'إضافة للتقويم')),
                       subtitle: Text(Tr.t(
                         ctx,
-                        'Precalculates prayer times up to ${st.calendarHorizonDays} days ahead in calendar',
-                        'يقوم بحساب مواقيت الصلاة حتى ${st.calendarHorizonDays} يوماً قادمة في التقويم',
+                        'Create events in your device calendar',
+                        'إنشاء أحداث في تقويم الجهاز',
                       )),
                       secondary: const Icon(Icons.calendar_month),
                       value: e.addToCalendar,
@@ -2026,7 +2215,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
                     if (e.addToCalendar) ...[
                       const SizedBox(height: 10),
                       Text(
-                        Tr.t(ctx, 'Event duration (meeting length)', 'مدة الحدث في التقويم (فترة الاجتماع)'),
+                        Tr.t(ctx, 'Event duration', 'مدة الحدث'),
                         style: Theme.of(ctx).textTheme.titleSmall,
                       ),
                       const SizedBox(height: 8),
@@ -2055,9 +2244,6 @@ class _H extends State<Home> with WidgetsBindingObserver {
                                       icon: const Icon(Icons.remove, size: 18),
                                       onPressed: calDurationHours > 0 ? () => set(() {
                                         calDurationHours--;
-                                        if (calDurationHours == 0 && calDurationMinutes == 0) {
-                                          calDurationMinutes = 15;
-                                        }
                                         e.calDuration = calDurationHours * 60 + calDurationMinutes;
                                       }) : null,
                                     ),
@@ -2067,9 +2253,6 @@ class _H extends State<Home> with WidgetsBindingObserver {
                                         final val = await showNumberInputDialog(ctx, title: Tr.t(ctx, 'Hours', 'ساعات'), current: calDurationHours, max: 24);
                                         if (val != null) set(() {
                                           calDurationHours = val;
-                                          if (calDurationHours == 0 && calDurationMinutes == 0) {
-                                            calDurationMinutes = 15;
-                                          }
                                           e.calDuration = calDurationHours * 60 + calDurationMinutes;
                                         });
                                       },
@@ -2109,9 +2292,8 @@ class _H extends State<Home> with WidgetsBindingObserver {
                                   children: [
                                     IconButton.filledTonal(
                                       icon: const Icon(Icons.remove, size: 18),
-                                      onPressed: (calDurationMinutes > 1 || calDurationHours > 0) ? () => set(() {
+                                      onPressed: (calDurationMinutes > 0 || calDurationHours > 0) ? () => set(() {
                                         if (calDurationMinutes > 0) {
-                                          if (calDurationHours == 0 && calDurationMinutes <= 1) return;
                                           calDurationMinutes--;
                                         } else if (calDurationHours > 0) {
                                           calDurationHours--;
@@ -2126,9 +2308,6 @@ class _H extends State<Home> with WidgetsBindingObserver {
                                         final val = await showNumberInputDialog(ctx, title: Tr.t(ctx, 'Minutes', 'دقائق'), current: calDurationMinutes, max: 59);
                                         if (val != null) set(() {
                                           calDurationMinutes = val;
-                                          if (calDurationHours == 0 && calDurationMinutes == 0) {
-                                            calDurationMinutes = 1;
-                                          }
                                           e.calDuration = calDurationHours * 60 + calDurationMinutes;
                                         });
                                       },
@@ -2174,7 +2353,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
                             Icon(Icons.timelapse, size: 18, color: Theme.of(ctx).colorScheme.primary),
                             const SizedBox(width: 8),
                             Text(
-                              '${Tr.t(ctx, "Meeting duration: ", "مدة الاجتماع / الحدث: ")}${formatCalDuration(ctx, (calDurationHours * 60 + calDurationMinutes) > 0 ? (calDurationHours * 60 + calDurationMinutes) : 15)}',
+                              '${Tr.t(ctx, "Event duration: ", "مدة الحدث: ")}${formatCalDuration(ctx, calDurationHours * 60 + calDurationMinutes)}',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
@@ -2184,7 +2363,58 @@ class _H extends State<Home> with WidgetsBindingObserver {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
+
+                      // Schedule ahead for (Calendar horizon per alarm)
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<int?>(
+                        value: e.calHorizonDays,
+                        decoration: InputDecoration(
+                          labelText: Tr.t(ctx, 'Schedule ahead for', 'إضافة للتقويم مسبقاً لمدة'),
+                          prefixIcon: const Icon(Icons.date_range),
+                          helperText: Tr.t(
+                            ctx,
+                            'Precalculates prayer times for this period in your calendar',
+                            'يقوم بحساب مواقيت الصلاة مسبقاً وتدوينها في التقويم لهذه المدة',
+                          ),
+                          helperMaxLines: 2,
+                        ),
+                        items: [
+                          DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text(Tr.t(
+                              ctx,
+                              'App default (${st.calendarHorizonDays} days)',
+                              'الافتراضي العام (${st.calendarHorizonDays} يوماً)',
+                            )),
+                          ),
+                          DropdownMenuItem<int?>(
+                            value: 14,
+                            child: Text(Tr.t(ctx, '14 days (2 weeks)', '14 يوماً (أسبوعان)')),
+                          ),
+                          DropdownMenuItem<int?>(
+                            value: 30,
+                            child: Text(Tr.t(ctx, '30 days (1 month)', '30 يوماً (شهر)')),
+                          ),
+                          DropdownMenuItem<int?>(
+                            value: 60,
+                            child: Text(Tr.t(ctx, '60 days (2 months)', '60 يوماً (شهران)')),
+                          ),
+                          DropdownMenuItem<int?>(
+                            value: 90,
+                            child: Text(Tr.t(ctx, '90 days (3 months)', '90 يوماً (3 أشهر)')),
+                          ),
+                          DropdownMenuItem<int?>(
+                            value: 180,
+                            child: Text(Tr.t(ctx, '180 days (6 months)', '180 يوماً (6 أشهر)')),
+                          ),
+                          DropdownMenuItem<int?>(
+                            value: 365,
+                            child: Text(Tr.t(ctx, '365 days (1 year)', '365 يوماً (سنة كاملة)')),
+                          ),
+                        ],
+                        onChanged: (v) => set(() => e.calHorizonDays = v),
+                      ),
+                      const SizedBox(height: 10),
                       if (_availableCalendars != null && _availableCalendars!.isNotEmpty) ...[
                         DropdownButtonFormField<String>(
                           value: (e.calendarId != null && _availableCalendars!.any((c) => c.id == e.calendarId))
@@ -2279,7 +2509,7 @@ class _H extends State<Home> with WidgetsBindingObserver {
                                 }
                                 if (e.addToCalendar) {
                                   final dur = calDurationHours * 60 + calDurationMinutes;
-                                  e.calDuration = dur > 0 ? dur : 15;
+                                  e.calDuration = dur >= 0 ? dur : 0;
                                 }
                                 e.label = lbl.text.trim();
                                 e.on = true;
