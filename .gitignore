@@ -1,0 +1,6 @@
+# app1 gitignore
+app2/
+.idea/
+.vscode/
+*.apk
+build/
