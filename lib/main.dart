@@ -192,6 +192,7 @@ class Settings {
   String timeFormat = 'system'; // 'system', '12h', '24h'
   String language = 'system';   // 'system', 'en', 'ar'
   String? defaultCalendarId;    // device calendar ID for "Add to Calendar"
+  int calendarHorizonDays = 30; // Precalculated days for calendar events (14, 30, 60, 90, 180, 365)
 
   Map<String, dynamic> toJson() => {
     'country': country,
@@ -202,6 +203,7 @@ class Settings {
     'timeFormat': timeFormat,
     'language': language,
     'defaultCalendarId': defaultCalendarId,
+    'calendarHorizonDays': calendarHorizonDays,
   };
 
   Settings();
@@ -214,6 +216,7 @@ class Settings {
     timeFormat = j['timeFormat'] ?? 'system';
     language = j['language'] ?? 'system';
     defaultCalendarId = j['defaultCalendarId'];
+    calendarHorizonDays = (j['calendarHorizonDays'] as num?)?.toInt() ?? 30;
   }
 }
 
@@ -664,7 +667,8 @@ class CalendarService {
           : (alarm.prayer ? '${alarm.p} alarm' : 'Awan alarm');
 
       final newEventIds = <String, String>{};
-      for (var i = 0; i < 14; i++) {
+      final horizon = (st.calendarHorizonDays > 0) ? st.calendarHorizonDays : 30;
+      for (var i = 0; i < horizon; i++) {
         final targetDate = now.add(Duration(days: i));
         final at = ringAt(alarm, targetDate);
         if (!at.isAfter(now)) continue;
@@ -1484,6 +1488,54 @@ class _H extends State<Home> with WidgetsBindingObserver {
                       syncAllCalendarEvents();
                     },
                   ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    value: [14, 30, 60, 90, 180, 365].contains(st.calendarHorizonDays)
+                        ? st.calendarHorizonDays
+                        : 30,
+                    decoration: InputDecoration(
+                      labelText: Tr.t(context, 'Calendar sync horizon', 'أفق مزامنة التقويم'),
+                      prefixIcon: const Icon(Icons.date_range),
+                      helperText: Tr.t(
+                        context,
+                        'Precalculates prayer times for this period in your calendar',
+                        'يقوم بحساب مواقيت الصلاة مسبقاً وتدوينها في التقويم لهذه المدة',
+                      ),
+                      helperMaxLines: 2,
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 14,
+                        child: Text(Tr.t(context, '14 days (2 weeks)', '14 يوماً (أسبوعان)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 30,
+                        child: Text(Tr.t(context, '30 days (1 month)', '30 يوماً (شهر)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 60,
+                        child: Text(Tr.t(context, '60 days (2 months)', '60 يوماً (شهران)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 90,
+                        child: Text(Tr.t(context, '90 days (3 months)', '90 يوماً (3 أشهر)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 180,
+                        child: Text(Tr.t(context, '180 days (6 months)', '180 يوماً (6 أشهر)')),
+                      ),
+                      DropdownMenuItem(
+                        value: 365,
+                        child: Text(Tr.t(context, '365 days (1 year)', '365 يوماً (سنة كاملة)')),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() { st.calendarHorizonDays = v; });
+                      save();
+                      syncAllCalendarEvents();
+                    },
+                  ),
               ],
             ),
           ),
@@ -1923,7 +1975,11 @@ class _H extends State<Home> with WidgetsBindingObserver {
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(Tr.t(ctx, 'Add to Calendar', 'إضافة للتقويم')),
-                      subtitle: Text(Tr.t(ctx, 'Create events in your device calendar', 'إنشاء أحداث في تقويم الجهاز')),
+                      subtitle: Text(Tr.t(
+                        ctx,
+                        'Precalculates prayer times up to ${st.calendarHorizonDays} days ahead in calendar',
+                        'يقوم بحساب مواقيت الصلاة حتى ${st.calendarHorizonDays} يوماً قادمة في التقويم',
+                      )),
                       secondary: const Icon(Icons.calendar_month),
                       value: e.addToCalendar,
                       onChanged: (v) async {
