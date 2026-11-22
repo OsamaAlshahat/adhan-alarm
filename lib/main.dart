@@ -2080,51 +2080,6 @@ class _H extends State<Home> with WidgetsBindingObserver {
                     if (e.repeatMode == 'custom') ...[
                       const SizedBox(height: 10),
 
-                      // Quick preset buttons
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            ActionChip(
-                              label: Text(Tr.t(ctx, 'Weekdays', 'أيام العمل')),
-                              avatar: const Icon(Icons.work_outline, size: 14),
-                              onPressed: () => set(() {
-                                e.days = Tr.isAr(ctx)
-                                    ? [DateTime.sunday, DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday]
-                                    : [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday];
-                              }),
-                            ),
-                            const SizedBox(width: 6),
-                            ActionChip(
-                              label: Text(Tr.t(ctx, 'Weekend', 'عطلة الأسبوع')),
-                              avatar: const Icon(Icons.weekend_outlined, size: 14),
-                              onPressed: () => set(() {
-                                e.days = Tr.isAr(ctx)
-                                    ? [DateTime.friday, DateTime.saturday]
-                                    : [DateTime.saturday, DateTime.sunday];
-                              }),
-                            ),
-                            const SizedBox(width: 6),
-                            ActionChip(
-                              label: Text(Tr.t(ctx, 'All', 'الكل')),
-                              avatar: const Icon(Icons.done_all, size: 14),
-                              onPressed: () => set(() {
-                                e.days = [1, 2, 3, 4, 5, 6, 7];
-                              }),
-                            ),
-                            const SizedBox(width: 6),
-                            ActionChip(
-                              label: Text(Tr.t(ctx, 'Clear', 'مسح')),
-                              avatar: const Icon(Icons.clear, size: 14),
-                              onPressed: () => set(() {
-                                e.days.clear();
-                              }),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-
                       // Circular 7-day row
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
