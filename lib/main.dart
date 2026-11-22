@@ -33,6 +33,9 @@ void callbackDispatcher() {
       if (l != null) alarms = (jsonDecode(l) as List).map((e) => Al.from(e)).toList();
       await Alarm.init();
       await reschedule();
+      try {
+        await syncAllCalendarEvents();
+      } catch (_) {}
       return true;
     } catch (_) {
       return false;
