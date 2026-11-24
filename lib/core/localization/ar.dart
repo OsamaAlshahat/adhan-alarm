@@ -1,0 +1,181 @@
+/// Arabic language strings, prayer names, cities, countries, and day translations.
+
+const weekDaysAr = [
+  {'day': DateTime.saturday, 'name': 'السبت', 'short': 'سبت'},
+  {'day': DateTime.sunday, 'name': 'الأحد', 'short': 'أحد'},
+  {'day': DateTime.monday, 'name': 'الإثنين', 'short': 'إث'},
+  {'day': DateTime.tuesday, 'name': 'الثلاثاء', 'short': 'ثل'},
+  {'day': DateTime.wednesday, 'name': 'الأربعاء', 'short': 'أر'},
+  {'day': DateTime.thursday, 'name': 'الخميس', 'short': 'خم'},
+  {'day': DateTime.friday, 'name': 'الجمعة', 'short': 'جم'},
+];
+
+const arPrayers = <String, String>{
+  'fajr': 'الفجر',
+  'sunrise': 'الشروق',
+  'dhuhr': 'الظهر',
+  'asr': 'العصر',
+  'maghrib': 'المغرب',
+  'isha': 'العشاء',
+};
+
+const arMethods = <String, String>{
+  'egyptian': 'الهيئة المصرية العامة للمساحة',
+  'mwl': 'رابطة العالم الإسلامي',
+  'makkah': 'أم القرى (مكة المكرمة)',
+  'karachi': 'جامعة العلوم الإسلامية بكراتشي',
+  'isna': 'الجمعية الإسلامية لأمريكا الشمالية',
+};
+
+const arCountries = <String, String>{
+  'Egypt': 'مصر',
+  'Saudi Arabia': 'المملكة العربية السعودية',
+  'UAE': 'الإمارات',
+  'Jordan': 'الأردن',
+  'Palestine': 'فلسطين',
+  'Kuwait': 'الكويت',
+  'Qatar': 'قطر',
+  'Iraq': 'العراق',
+  'Morocco': 'المغرب',
+  'Algeria': 'الجزائر',
+  'Tunisia': 'تونس',
+  'Turkey': 'تركيا',
+  'Pakistan': 'باكستان',
+  'Indonesia': 'إندونيسيا',
+  'United Kingdom': 'المملكة المتحدة',
+  'United States': 'الولايات المتحدة',
+};
+
+const arCities = <String, String>{
+  'Alexandria': 'الإسكندرية',
+  'Cairo': 'القاهرة',
+  'Giza': 'الجيزة',
+  'Mansoura': 'المنصورة',
+  'Tanta': 'طنطا',
+  'Port Said': 'بورسعيد',
+  'Suez': 'السويس',
+  'Luxor': 'الأقصر',
+  'Aswan': 'أسوان',
+  'Assiut': 'أسيوط',
+  'Makkah': 'مكة المكرمة',
+  'Madinah': 'المدينة المنورة',
+  'Riyadh': 'الرياض',
+  'Jeddah': 'جدة',
+  'Dubai': 'دبي',
+  'Abu Dhabi': 'أبوظبي',
+  'Amman': 'عمان',
+  'Jerusalem': 'القدس',
+  'Kuwait City': 'مدينة الكويت',
+  'Doha': 'الدوحة',
+  'Baghdad': 'بغداد',
+  'Casablanca': 'الدار البيضاء',
+  'Algiers': 'الجزائر العاصمة',
+  'Tunis': 'تونس العاصمة',
+  'Istanbul': 'إسطنبول',
+  'Karachi': 'كراتشي',
+  'Jakarta': 'جاكرتا',
+  'London': 'لندن',
+  'New York': 'نيويورك',
+  'My location': 'موقعي الحالي',
+  'GPS': 'GPS',
+};
+
+const arStrings = <String, String>{
+  // General & Navigation
+  'Awan': 'أوان',
+  'Alarms': 'المنبهات',
+  'Settings': 'الإعدادات',
+  'Alarm': 'منبه',
+  'Save': 'حفظ',
+  'Cancel': 'إلغاء',
+  'Delete': 'حذف',
+  'Stop': 'إيقاف',
+  'Snooze 5 min': 'غفوة 5 دقائق',
+  'All': 'الكل',
+  'Calendar': 'التقويم',
+  'Normal': 'عادي',
+  'in calendar': 'في التقويم',
+
+  // Empty states
+  'No alarms yet. Tap “New alarm”.': 'لا توجد منبهات حالياً. اضغط على "منبه جديد".',
+  'No alarms with calendar sync.': 'لا توجد منبهات مرتبطة بالتقويم.',
+  'No normal alarms without calendar.': 'لا توجد منبهات عادية بدون تقويم.',
+
+  // Alarm Edit Sheet
+  'New alarm': 'منبه جديد',
+  'Edit alarm': 'تعديل المنبه',
+  'Normal time': 'وقت عادي',
+  'Prayer time': 'وقت الصلاة',
+  'Exact time': 'في الموعد',
+  'Before': 'قبل',
+  'After': 'بعد',
+  'Hours': 'ساعات',
+  'Minutes': 'دقائق',
+  'Repeat': 'التكرار',
+  'Only once': 'مرة واحدة',
+  'Every day': 'كل يوم',
+  'Specific days': 'أيام محددة',
+  'Days': 'الأيام',
+  'Sound & Alerts': 'الصوت والتنبيهات',
+  'Sound': 'صوت',
+  'Vibration': 'اهتزاز',
+  'Notification': 'إشعار',
+  'Choose ring sound': 'اختيار نغمة الرنين',
+  'Default ring': 'النغمة الافتراضية',
+  'Label': 'التسمية',
+  'Alarm label': 'اسم أو ملاحظة للمنبه',
+  'Add to Calendar': 'إضافة إلى التقويم',
+  'Use app default': 'استخدام الإعداد الافتراضي للتطبيق',
+  'Events generation horizon': 'أفق إنشاء الأحداث',
+  'Event duration': 'مدة الحدث',
+  'days': 'يوم',
+  'day': 'يوم',
+
+  // Settings Screen
+  'Language': 'اللغة',
+  'Follow system': 'حسب لغة الهاتف',
+  'Arabic': 'العربية',
+  'English': 'English',
+  'Time format': 'تنسيق الوقت',
+  'System format': 'حسب إعدادات النظام',
+  '12-hour (AM/PM)': '12 ساعة (ص / م)',
+  '24-hour': '24 ساعة',
+  'Location': 'الموقع',
+  'Country': 'الدولة',
+  'City': 'المدينة',
+  'Use GPS Location': 'استخدام موقع GPS الحالي',
+  'Getting GPS location...': 'جارٍ تحديد موقع GPS...',
+  'Prayer calculation method': 'طريقة حساب الصلاة',
+  'Calendar Integration': 'الربط مع التقويم',
+  'Default calendar': 'التقويم الافتراضي',
+  'Default calendar horizon': 'أفق المزامنة المسبقة للتقويم',
+  'No writable calendar found': 'لم يتم العثور على تقويم متاح للكتابة',
+  'Device calendar permission is required': 'يلزم إذن الوصول لتقويم الجهاز',
+  'Syncing all alarms to calendar...': 'جارٍ مزامنة جميع المنبهات مع التقويم...',
+  'Calendar sync completed': 'تمت مزامنة التقويم بنجاح',
+  'Sync Now': 'مزامنة الآن',
+
+  // Permissions & Setup Guides
+  'Alarm ring & full screen setup': 'إعدادات رنين وشاشة المنبه للأندرويد',
+  'iPhone Alarm & Notification setup': 'إعدادات المنبه والإشعارات للآيفون',
+  'Notification Permission': 'إذن الإشعارات',
+  'Notification permission checked': 'تم التحقق من إذن الإشعارات',
+  'iPhone Settings': 'إعدادات الآيفون',
+  'Permission Settings': 'إعدادات الإذن',
+  'Battery Optimization': 'تحسين استهلاك البطارية',
+  'Exact Alarm Permission': 'إذن المنبه الدقيق',
+  'Full Screen Permission': 'إذن الشاشة الكاملة',
+  'Display Over Other Apps': 'الظهور فوق التطبيقات',
+
+  // Android Instructions
+  'android_guidance': 'لضمان ظهور شاشة المنبه فوراً والرنين حتى في وضع القفل، يرجى تفعيل الأذونات التالية:',
+  'android_exact_alarm': '• إذن المنبه الدقيق: ضروري لجدولة الأوقات بالثانية دون تأخير نظام أندرويد.',
+  'android_battery': '• إيقاف تحسين البطارية: لمنع النظام من تجميد التطبيق في الخلفية.',
+  'android_fullscreen': '• الظهور فوق التطبيقات وشاشة القفل: لعرض شاشة الرنين وأزرار الإيقاف فوراً.',
+
+  // iOS Instructions
+  'ios_guidance': 'لضمان عمل منبهات الصلاة بدقة على جهاز الآيفون:\n\n'
+      '١. اضغط "إذن الإشعارات" بالأسفل وتأكد من السماح بالإشعارات والأصوات.\n'
+      '٢. تأكد من إيقاف وضع الصامت الفيزيائي (زر/مفتاح الصوت الجانبي) لسماع الرنين.\n'
+      '٣. عند رنين المنبه وشاشة الآيفون مقفلة، اضغط على شريط الإشعار لفتح التطبيق والإيقاف أو الغفوة.',
+};
