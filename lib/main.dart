@@ -547,9 +547,10 @@ Future<void> reschedule() async {
     if (s.dateTime.isAfter(now)) await Alarm.stop(s.id);
   }
   for (final a in alarms.where((a) => a.on)) {
-    final path = !a.sound
-        ? 'assets/silent.wav'
-        : ((a.soundPath != null && File(a.soundPath!).existsSync()) ? a.soundPath! : 'assets/alarm.wav');
+    final validPath = (a.soundPath != null && File(a.soundPath!).existsSync())
+        ? ((Platform.isIOS && a.soundPath!.toLowerCase().endsWith('.mp3')) ? 'assets/alarm.wav' : a.soundPath!)
+        : 'assets/alarm.wav';
+    final path = !a.sound ? 'assets/silent.wav' : validPath;
     var count = 0;
     for (var i = 0; i < 14; i++) {
       final targetDate = now.add(Duration(days: i));
@@ -607,9 +608,16 @@ String calendarDisplayName(dc.Calendar cal) {
                     account?.toLowerCase() == 'phone' ||
                     account?.toLowerCase() == 'my phone';
 
+  final isApple = cal.accountType?.toLowerCase().contains('apple') == true ||
+                  cal.accountType?.toLowerCase().contains('icloud') == true ||
+                  account?.toLowerCase().contains('icloud') == true ||
+                  account?.toLowerCase().contains('apple') == true;
+
   if (name == null || name.isEmpty) {
     if (isSamsung) {
       name = 'Samsung Calendar';
+    } else if (isApple) {
+      name = 'Apple Calendar';
     } else if (cal.isDefault == true) {
       name = 'Phone Calendar';
     } else if (account != null && account.isNotEmpty) {
@@ -621,6 +629,8 @@ String calendarDisplayName(dc.Calendar cal) {
 
   if (isSamsung && (account?.toLowerCase() == 'phone' || account?.toLowerCase() == 'my phone')) {
     return '$name (Phone)';
+  } else if (isApple && account != null && !name.toLowerCase().contains('icloud') && !name.toLowerCase().contains('apple')) {
+    return '$name ($account)';
   } else if (account != null && name != account && !name.contains(account)) {
     return '$name ($account)';
   }
@@ -636,10 +646,22 @@ class CalendarService {
   /// Request calendar permissions using both permission_handler and device_calendar
   static Future<bool> requestPermissions() async {
     try {
-      var isGranted = await Permission.calendar.isGranted;
-      if (!isGranted) {
-        final res = await Permission.calendar.request();
+      var isGranted = false;
+      if (Platform.isIOS) {
+        final res = await Permission.calendarFullAccess.request();
         isGranted = res.isGranted;
+        if (!isGranted) {
+          final resLegacy = await Permission.calendar.request();
+          isGranted = resLegacy.isGranted;
+        }
+      } else {
+        var status = await Permission.calendar.isGranted;
+        if (!status) {
+          final res = await Permission.calendar.request();
+          isGranted = res.isGranted;
+        } else {
+          isGranted = true;
+        }
       }
       var perms = await _plugin.hasPermissions();
       if (perms.isSuccess && perms.data == true) {
@@ -683,12 +705,18 @@ class CalendarService {
         }
       }
 
-      // 3. Put device default / primary calendar first (e.g. Samsung Calendar)
+      // 3. Put device default / primary calendar first (e.g. Samsung Calendar, Apple/iCloud Calendar)
       uniqueList.sort((a, b) {
         if (a.isDefault == true && b.isDefault != true) return -1;
         if (b.isDefault == true && a.isDefault != true) return 1;
-        final aIsLocal = a.accountType?.toLowerCase().contains('samsung') == true || a.accountName?.toLowerCase() == 'phone';
-        final bIsLocal = b.accountType?.toLowerCase().contains('samsung') == true || b.accountName?.toLowerCase() == 'phone';
+        final aIsLocal = a.accountType?.toLowerCase().contains('samsung') == true ||
+                         a.accountType?.toLowerCase().contains('icloud') == true ||
+                         a.accountType?.toLowerCase().contains('apple') == true ||
+                         a.accountName?.toLowerCase() == 'phone';
+        final bIsLocal = b.accountType?.toLowerCase().contains('samsung') == true ||
+                         b.accountType?.toLowerCase().contains('icloud') == true ||
+                         b.accountType?.toLowerCase().contains('apple') == true ||
+                         b.accountName?.toLowerCase() == 'phone';
         if (aIsLocal && !bIsLocal) return -1;
         if (bIsLocal && !aIsLocal) return 1;
         return 0;
@@ -1567,6 +1595,61 @@ class _H extends State<Home> with WidgetsBindingObserver {
                             );
                           }
                         },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (Platform.isIOS) ...[
+          const SizedBox(height: 24),
+          Text(Tr.t(context, 'iPhone Alarm & Notification setup', 'إعدادات المنبه والإشعارات للآيفون'), style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Card(
+            margin: EdgeInsets.zero,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    Tr.t(
+                      context,
+                      'To ensure prayer alarms ring reliably on your iPhone:\n\n'
+                      '1. Tap "Notification Permission" below and allow notifications.\n'
+                      '2. Make sure the physical mute/silent switch on your iPhone is OFF.\n'
+                      '3. When an alarm rings on the lock screen, tap the banner to open and stop/snooze.',
+                      'لضمان عمل منبهات الصلاة بدقة على جهاز الآيفون:\n\n'
+                      '١. اضغط "إذن الإشعارات" بالأسفل وتأكد من السماح بالإشعارات والأصوات.\n'
+                      '٢. تأكد من إيقاف وضع الصامت الفيزيائي (زر/مفتاح الصوت الجانبي) لسماع الرنين.\n'
+                      '٣. عند رنين المنبه وشاشة الآيفون مقفلة، اضغط على شريط الإشعار لفتح التطبيق والإيقاف أو الغفوة.',
+                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        icon: const Icon(Icons.notifications_active, size: 18),
+                        label: Text(Tr.t(context, 'Notification Permission', 'إذن الإشعارات')),
+                        onPressed: () async {
+                          await Permission.notification.request();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(Tr.t(context, 'Notification permission checked', 'تم التحقق من إذن الإشعارات'))),
+                            );
+                          }
+                        },
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.settings, size: 18),
+                        label: Text(Tr.t(context, 'iPhone Settings', 'إعدادات الآيفون')),
+                        onPressed: () => openAppSettings(),
                       ),
                     ],
                   ),
