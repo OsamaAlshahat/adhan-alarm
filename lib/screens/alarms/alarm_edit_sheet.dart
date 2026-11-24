@@ -776,6 +776,9 @@ Future<void> showAlarmEditSheet(
                       onPressed: !ok
                           ? null
                           : () async {
+                              final oldCalendarId = existing?.calendarId;
+                              final wasInCalendar = existing?.addToCalendar == true;
+
                               if (e.prayer) {
                                 if (signChoice == 0) {
                                   e.mins = 0;
@@ -799,10 +802,10 @@ Future<void> showAlarmEditSheet(
                               }
                               save();
                               await reschedule();
-                              // Fire-and-forget calendar sync
+                              // Sync calendar events
                               if (e.addToCalendar) {
-                                CalendarService.syncAlarmToCalendar(e).then((_) => save());
-                              } else if (e.calEventIds.isNotEmpty) {
+                                CalendarService.syncAlarmToCalendar(e, oldCalendarId: oldCalendarId).then((_) => save());
+                              } else if (wasInCalendar || e.calEventIds.isNotEmpty) {
                                 CalendarService.removeAlarmFromCalendar(e).then((_) => save());
                               }
                               onSaved();
@@ -820,3 +823,4 @@ Future<void> showAlarmEditSheet(
     ),
   );
 }
+

@@ -154,8 +154,15 @@ class CalendarService {
     return cals.isNotEmpty ? cals.first.id : null;
   }
 
-  /// Create a single calendar event, return the event ID
-  static Future<String?> createEvent(String calendarId, String title, DateTime time, {int durationMinutes = 0}) async {
+  /// Create or update a calendar event in-place (updating prevents duplicates entirely)
+  static Future<String?> createOrUpdateEvent({
+    required String calendarId,
+    String? eventId,
+    required String title,
+    required DateTime time,
+    int durationMinutes = 0,
+    String? description,
+  }) async {
     try {
       tz.Location location;
       try {
@@ -168,11 +175,13 @@ class CalendarService {
       final dur = durationMinutes >= 0 ? durationMinutes : 0;
       final end = start.add(Duration(minutes: dur));
 
-      final event = dc.Event(calendarId,
+      final event = dc.Event(
+        calendarId,
+        eventId: eventId,
         title: title,
         start: start,
         end: end,
-        description: 'Created by أوان (Awan)',
+        description: description ?? 'Created by أوان (Awan)',
       );
       final result = await _plugin.createOrUpdateEvent(event);
       if (result != null && result.isSuccess) return result.data;
@@ -182,18 +191,28 @@ class CalendarService {
     }
   }
 
-  /// Delete a single calendar event by eventId
+  /// Delete a single calendar event by eventId with fallback across calendars
   static Future<bool> deleteEvent(String calendarId, String eventId) async {
     try {
       final result = await _plugin.deleteEvent(calendarId, eventId);
-      return result?.isSuccess ?? false;
+      if (result?.isSuccess == true && result?.data == true) return true;
+      // Fallback: If deleting with specified calendarId didn't succeed,
+      // attempt deleting across all writable calendars in case of calendarId change or mismatch
+      final cals = await getWritableCalendars();
+      for (final c in cals) {
+        if (c.id != null && c.id != calendarId) {
+          final alt = await _plugin.deleteEvent(c.id!, eventId);
+          if (alt?.isSuccess == true && alt?.data == true) return true;
+        }
+      }
+      return false;
     } catch (_) {
       return false;
     }
   }
 
   /// Sync an alarm's occurrences to the device calendar
-  static Future<void> syncAlarmToCalendar(Al alarm) async {
+  static Future<void> syncAlarmToCalendar(Al alarm, {String? oldCalendarId}) async {
     try {
       final calId = await effectiveCalendarId(alarm);
       if (calId == null) return;
@@ -204,15 +223,22 @@ class CalendarService {
       final title = alarm.label.isNotEmpty
           ? alarm.label
           : (alarm.prayer ? '${alarm.mins == 0 ? "موعد صلاة" : "${alarm.mins} دقيقة"} ${alarm.p}' : 'منبه أوان');
+      final desc = 'Created by أوان (Awan) [awan_id:${alarm.id}]';
 
-      // 1. Delete previously generated events that are now outside the schedule or need refresh
-      for (final entry in alarm.calEventIds.entries) {
-        await deleteEvent(calId, entry.value);
+      // 1. If calendar changed, delete all events from old calendar
+      final prevCal = oldCalendarId ?? alarm.calendarId;
+      if (prevCal != null && prevCal != calId) {
+        for (final eventId in alarm.calEventIds.values) {
+          await deleteEvent(prevCal, eventId);
+        }
+        alarm.calEventIds.clear();
       }
-      alarm.calEventIds.clear();
 
-      // 2. Generate new events for the configured horizon
+      // 2. Prepare new event ID mapping for this horizon (in-place update)
+      final newCalEventIds = <String, String>{};
+      final activeEventIds = <String>{};
       var count = 0;
+
       for (var i = 0; i < daysToSync; i++) {
         final targetDate = now.add(Duration(days: i));
         final at = ringAt(alarm, targetDate);
@@ -223,22 +249,72 @@ class CalendarService {
           continue;
         }
 
-        final eventId = await createEvent(
-          calId,
-          title,
-          at,
-          durationMinutes: alarm.calDuration,
-        );
+        final dayKey = 'day_$i';
+        final existingEventId = alarm.calEventIds[dayKey];
+
+        // Try to update existing event in-place first (prevents duplicates entirely!)
+        String? eventId;
+        if (existingEventId != null) {
+          eventId = await createOrUpdateEvent(
+            calendarId: calId,
+            eventId: existingEventId,
+            title: title,
+            time: at,
+            durationMinutes: alarm.calDuration,
+            description: desc,
+          );
+        }
+
+        // If in-place update returned null or there was no previous event, create fresh
+        if (eventId == null) {
+          eventId = await createOrUpdateEvent(
+            calendarId: calId,
+            title: title,
+            time: at,
+            durationMinutes: alarm.calDuration,
+            description: desc,
+          );
+        }
+
         if (eventId != null) {
-          alarm.calEventIds['day_$i'] = eventId;
+          newCalEventIds[dayKey] = eventId;
+          activeEventIds.add(eventId);
         }
 
         if (alarm.repeatMode == 'once' && ++count == 1) break;
       }
 
-      if (alarm.calEventIds.isNotEmpty) {
-        alarm.calendarId = calId;
+      // 3. Delete any previously tracked events that are no longer part of the new schedule
+      for (final entry in alarm.calEventIds.entries) {
+        if (!newCalEventIds.containsKey(entry.key)) {
+          await deleteEvent(calId, entry.value);
+        }
       }
+
+      // 4. Clean up any orphan events in the calendar that carry this alarm's tag [awan_id:ID]
+      // but are not in activeEventIds (e.g. left behind by previous un-synced edits)
+      try {
+        final searchStart = now.subtract(const Duration(days: 2));
+        final searchEnd = now.add(Duration(days: horizonDays + 5));
+        final ret = await _plugin.retrieveEvents(
+          calId,
+          dc.RetrieveEventsParams(startDate: searchStart, endDate: searchEnd),
+        );
+        if (ret.isSuccess && ret.data != null) {
+          for (final ev in ret.data!) {
+            if (ev.description?.contains('[awan_id:${alarm.id}]') == true) {
+              if (ev.eventId != null && !activeEventIds.contains(ev.eventId)) {
+                await deleteEvent(calId, ev.eventId!);
+              }
+            }
+          }
+        }
+      } catch (_) {
+        // best effort orphan cleanup
+      }
+
+      alarm.calEventIds = newCalEventIds;
+      alarm.calendarId = calId;
     } catch (_) {
       // best effort — never disrupt alarm scheduling
     }
@@ -247,13 +323,39 @@ class CalendarService {
   /// Remove all calendar events created by this alarm
   static Future<void> removeAlarmFromCalendar(Al alarm) async {
     try {
-      if (alarm.calEventIds.isEmpty) return;
       final calId = alarm.calendarId ?? st.defaultCalendarId;
-      if (calId == null) return;
       for (final eventId in alarm.calEventIds.values) {
-        await deleteEvent(calId, eventId);
+        if (calId != null) {
+          await deleteEvent(calId, eventId);
+        } else {
+          final cals = await getWritableCalendars();
+          for (final c in cals) {
+            if (c.id != null) await _plugin.deleteEvent(c.id!, eventId);
+          }
+        }
       }
       alarm.calEventIds.clear();
+
+      // Clean up any remaining tagged events in the calendar
+      if (calId != null) {
+        try {
+          final now = DateTime.now();
+          final ret = await _plugin.retrieveEvents(
+            calId,
+            dc.RetrieveEventsParams(
+              startDate: now.subtract(const Duration(days: 2)),
+              endDate: now.add(const Duration(days: 370)),
+            ),
+          );
+          if (ret.isSuccess && ret.data != null) {
+            for (final ev in ret.data!) {
+              if (ev.description?.contains('[awan_id:${alarm.id}]') == true && ev.eventId != null) {
+                await deleteEvent(calId, ev.eventId!);
+              }
+            }
+          }
+        } catch (_) {}
+      }
     } catch (_) {
       // best effort
     }
@@ -275,3 +377,4 @@ Future<void> syncAllCalendarEvents() async {
     // never crash
   }
 }
+
