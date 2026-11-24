@@ -29,7 +29,8 @@ const enMethods = <String, String>{
 
 const enStrings = <String, String>{
   // General & Navigation
-  'Awan': 'Awan',
+  'Mee3ad': 'Mee3ad',
+  'Awan': 'Mee3ad',
   'Alarms': 'Alarms',
   'Settings': 'Settings',
   'Alarm': 'Alarm',
@@ -126,3 +127,4 @@ const enStrings = <String, String>{
       '2. Make sure the physical mute/silent switch on your iPhone is OFF.\n'
       '3. When an alarm rings on the lock screen, tap the banner to open and stop/snooze.',
 };
+

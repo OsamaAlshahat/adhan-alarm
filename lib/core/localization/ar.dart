@@ -82,7 +82,8 @@ const arCities = <String, String>{
 
 const arStrings = <String, String>{
   // General & Navigation
-  'Awan': 'أوان',
+  'Mee3ad': 'ميعاد',
+  'Awan': 'ميعاد',
   'Alarms': 'المنبهات',
   'Settings': 'الإعدادات',
   'Alarm': 'منبه',
@@ -179,3 +180,4 @@ const arStrings = <String, String>{
       '٢. تأكد من إيقاف وضع الصامت الفيزيائي (زر/مفتاح الصوت الجانبي) لسماع الرنين.\n'
       '٣. عند رنين المنبه وشاشة الآيفون مقفلة، اضغط على شريط الإشعار لفتح التطبيق والإيقاف أو الغفوة.',
 };
+

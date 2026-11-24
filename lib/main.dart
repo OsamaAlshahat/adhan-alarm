@@ -80,7 +80,7 @@ class App extends StatelessWidget {
       valueListenable: appLocaleNotifier,
       builder: (context, activeLocale, _) {
         return MaterialApp(
-          title: 'Awan',
+          title: 'Mee3ad',
           navigatorKey: navKey,
           locale: activeLocale,
           supportedLocales: const [

@@ -20,3 +20,4 @@ Future<void> openFullScreenIntentSettings() async {
     await openAppSettings();
   }
 }
+

@@ -213,7 +213,7 @@ class _SettingsViewState extends State<SettingsView> {
                       '1. Tap "Full-screen alarm permission" below to grant special access.\n'
                       '2. Tap "Appear on top" to ensure the alarm can display over other apps.\n'
                       '3. Disable battery optimization so alarms ring on time.',
-                      'لتشغيل الشاشة وعرض تنبيهات أوان ملء الشاشة على شاشة القفل في أندرويد ١٤ / ١٥:\n\n'
+                      'لتشغيل الشاشة وعرض تنبيهات ميعاد ملء الشاشة على شاشة القفل في أندرويد ١٤ / ١٥:\n\n'
                       '١. اضغط "إذن منبه ملء الشاشة" بالأسفل لمنح الإذن الخاص.\n'
                       '٢. اضغط "الظهور فوق التطبيقات" للتأكد من قدرة المنبه على الظهور.\n'
                       '٣. استثنِ التطبيق من توفير الطاقة لضمان عمل المنبه في موعده.',
@@ -364,8 +364,8 @@ class _SettingsViewState extends State<SettingsView> {
                       Text(
                         Tr.t(
                           context,
-                          'Please grant calendar permission so Awan can access your phone calendar.',
-                          'يرجى منح إذن التقويم ليتمكن أوان من الوصول إلى تقويم هاتفك.',
+                          'Please grant calendar permission so Mee3ad can access your phone calendar.',
+                          'يرجى منح إذن التقويم ليتمكن ميعاد من الوصول إلى تقويم هاتفك.',
                         ),
                         style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 13),
                       ),
@@ -474,3 +474,4 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 }
+

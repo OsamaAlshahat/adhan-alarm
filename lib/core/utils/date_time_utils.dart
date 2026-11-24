@@ -49,3 +49,4 @@ String formatCalDuration(BuildContext ctx, int minutes) {
     }
   }
 }
+

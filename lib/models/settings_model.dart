@@ -35,3 +35,4 @@ class Settings {
     calendarHorizonDays = (j['calendarHorizonDays'] as num?)?.toInt() ?? 30;
   }
 }
+

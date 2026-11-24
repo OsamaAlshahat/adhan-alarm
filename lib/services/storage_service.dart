@@ -28,3 +28,4 @@ void save() {
   prefs.setString('st', jsonEncode(st.toJson()));
   prefs.setString('al', jsonEncode(alarms.map((a) => a.toJson()).toList()));
 }
+

@@ -78,3 +78,4 @@ const cities = <String, List<List<Object>>>{
 
 const dailyRescheduleTaskKey = 'adhan_alarm_daily_reschedule';
 const platformFullscreen = MethodChannel('com.adhan_alarm.app/fullscreen_settings');
+

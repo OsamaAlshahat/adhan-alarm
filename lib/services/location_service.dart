@@ -41,3 +41,4 @@ Future<Position?> getCurrentGpsPosition() async {
     return null;
   }
 }
+

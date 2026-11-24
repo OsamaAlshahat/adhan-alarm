@@ -181,7 +181,7 @@ class CalendarService {
         title: title,
         start: start,
         end: end,
-        description: description ?? 'Created by أوان (Awan)',
+        description: description ?? 'Created by ميعاد (Mee3ad)',
       );
       final result = await _plugin.createOrUpdateEvent(event);
       if (result != null && result.isSuccess) return result.data;
@@ -222,8 +222,8 @@ class CalendarService {
       final daysToSync = alarm.repeatMode == 'once' ? 1 : horizonDays;
       final title = alarm.label.isNotEmpty
           ? alarm.label
-          : (alarm.prayer ? '${alarm.mins == 0 ? "موعد صلاة" : "${alarm.mins} دقيقة"} ${alarm.p}' : 'منبه أوان');
-      final desc = 'Created by أوان (Awan) [awan_id:${alarm.id}]';
+          : (alarm.prayer ? '${alarm.mins == 0 ? "موعد صلاة" : "${alarm.mins} دقيقة"} ${alarm.p}' : 'منبه ميعاد');
+      final desc = 'Created by ميعاد (Mee3ad) [mee3ad_id:${alarm.id}]';
 
       // 1. If calendar changed, delete all events from old calendar
       final prevCal = oldCalendarId ?? alarm.calendarId;
@@ -302,7 +302,8 @@ class CalendarService {
         );
         if (ret.isSuccess && ret.data != null) {
           for (final ev in ret.data!) {
-            if (ev.description?.contains('[awan_id:${alarm.id}]') == true) {
+            if (ev.description?.contains('[mee3ad_id:${alarm.id}]') == true ||
+                ev.description?.contains('[awan_id:${alarm.id}]') == true) {
               if (ev.eventId != null && !activeEventIds.contains(ev.eventId)) {
                 await deleteEvent(calId, ev.eventId!);
               }
@@ -349,7 +350,9 @@ class CalendarService {
           );
           if (ret.isSuccess && ret.data != null) {
             for (final ev in ret.data!) {
-              if (ev.description?.contains('[awan_id:${alarm.id}]') == true && ev.eventId != null) {
+              if ((ev.description?.contains('[mee3ad_id:${alarm.id}]') == true ||
+                   ev.description?.contains('[awan_id:${alarm.id}]') == true) &&
+                  ev.eventId != null) {
                 await deleteEvent(calId, ev.eventId!);
               }
             }

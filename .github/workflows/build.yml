@@ -22,8 +22,8 @@ jobs:
           P='<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_EXACT_ALARM"/><uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/><uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/><uses-permission android:name="android.permission.DISABLE_KEYGUARD"/><uses-permission android:name="android.permission.READ_CALENDAR"/><uses-permission android:name="android.permission.WRITE_CALENDAR"/>'
           sed -i "s|<application|$P<application|" $M
           sed -i 's|<activity|<activity android:showWhenLocked="true" android:turnScreenOn="true" android:inheritShowWhenLocked="true"|' $M
-          # Set app display name to Awan everywhere in AndroidManifest.xml
-          sed -i 's|android:label="[^"]*"|android:label="Awan"|g' $M
+          # Set app display name to Mee3ad everywhere in AndroidManifest.xml
+          sed -i 's|android:label="[^"]*"|android:label="Mee3ad"|g' $M
           # Ensure both android:icon and android:roundIcon are in AndroidManifest.xml
           python3 -c "
           with open('$M', 'r') as f:
@@ -38,13 +38,13 @@ jobs:
           cat > android/app/src/main/res/values/strings.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
-              <string name="app_name">Awan</string>
+              <string name="app_name">Mee3ad</string>
           </resources>
           EOF
           cat > android/app/src/main/res/values-ar/strings.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
-              <string name="app_name">أوان</string>
+              <string name="app_name">ميعاد</string>
           </resources>
           EOF
           # Add alarm RING intent filter so the alarm package can launch the activity on lock screen
@@ -138,7 +138,7 @@ jobs:
           with open(os.path.join(v26_dir, 'ic_launcher_round.xml'), 'w') as f:
               f.write(adaptive_xml)
 
-          print('All Awan launcher icons successfully generated!')
+          print('All Mee3ad launcher icons successfully generated!')
           "
           # Verify generated icons
           ls -la android/app/src/main/res/mipmap-xxxhdpi/
@@ -263,13 +263,13 @@ jobs:
           EOF
       - run: flutter pub get
       - run: flutter build apk --release
-      - name: Prepare Awan.apk output
+      - name: Prepare Mee3ad.apk output
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Awan.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Mee3ad.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Awan-APK
-          path: build/app/outputs/flutter-apk/Awan.apk
+          name: Mee3ad-APK
+          path: build/app/outputs/flutter-apk/Mee3ad.apk
 
   build-ios:
     name: Build iOS IPA
@@ -289,14 +289,14 @@ jobs:
           with open('$PLIST', 'rb') as f:
               data = plistlib.load(f)
           data['UIBackgroundModes'] = ['audio', 'fetch', 'processing']
-          data['CFBundleDisplayName'] = 'Awan'
-          data['CFBundleName'] = 'Awan'
+          data['CFBundleDisplayName'] = 'Mee3ad'
+          data['CFBundleName'] = 'Mee3ad'
           data['CFBundleDevelopmentRegion'] = 'en'
           data['CFBundleLocalizations'] = ['en', 'ar']
-          data['NSLocationWhenInUseUsageDescription'] = 'Awan needs your location to calculate accurate offline prayer times.'
-          data['NSCalendarsUsageDescription'] = 'Awan needs access to your calendar to add prayer alarm events.'
-          data['NSCalendarsFullAccessUsageDescription'] = 'Awan needs full calendar access to create and manage alarm events in your selected calendar.'
-          data['NSCalendarsWriteOnlyUsageDescription'] = 'Awan needs calendar write access to add prayer alarm events.'
+          data['NSLocationWhenInUseUsageDescription'] = 'Mee3ad needs your location to calculate accurate offline prayer times.'
+          data['NSCalendarsUsageDescription'] = 'Mee3ad needs access to your calendar to add prayer alarm events.'
+          data['NSCalendarsFullAccessUsageDescription'] = 'Mee3ad needs full calendar access to create and manage alarm events in your selected calendar.'
+          data['NSCalendarsWriteOnlyUsageDescription'] = 'Mee3ad needs calendar write access to add prayer alarm events.'
           data['BGTaskSchedulerPermittedIdentifiers'] = ['dev.fluttercommunity.workmanager.iOSBackgroundProcessingTask', 'dev.fluttercommunity.workmanager.iOSBackgroundFetchTask', 'daily_prayer_reschedule_task']
           with open('$PLIST', 'wb') as f:
               plistlib.dump(data, f)
@@ -393,12 +393,12 @@ jobs:
           EOF
       - name: Build iOS without code signing
         run: flutter build ios --release --no-codesign
-      - name: Package Awan.ipa
+      - name: Package Mee3ad.ipa
         run: |
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
-          zip -r Awan.ipa Payload
+          zip -r Mee3ad.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: Awan-IPA
-          path: Awan.ipa
+          name: Mee3ad-IPA
+          path: Mee3ad.ipa
