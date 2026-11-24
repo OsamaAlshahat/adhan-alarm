@@ -116,34 +116,24 @@ class _AlarmsViewState extends State<AlarmsView> {
                     formatTime(ringAt(a, DateTime.now()), context),
                     style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w400),
                   ),
-                  const Spacer(),
-                  if (a.addToCalendar)
+                  if (a.addToCalendar) ...[
+                    const SizedBox(width: 8),
                     Container(
-                      margin: const EdgeInsets.only(right: 4, left: 4),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6),
                         border: Border.all(
                           color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.calendar_month, size: 13, color: Theme.of(context).colorScheme.primary),
-                          const SizedBox(width: 4),
-                          Text(
-                            Tr.t(context, 'Calendar', 'في التقويم'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer,
-                            ),
-                          ),
-                        ],
+                      child: Icon(
+                        Icons.calendar_month,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
+                  ],
                 ],
               ),
               subtitle: Text(
@@ -192,3 +182,4 @@ class _AlarmsViewState extends State<AlarmsView> {
     );
   }
 }
+
