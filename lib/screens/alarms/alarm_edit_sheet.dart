@@ -748,7 +748,7 @@ Future<void> showAlarmEditSheet(
                           scrollDirection: Axis.horizontal,
                           child: Row(
                             children: [
-                              for (final d in [7, 14, 30, 60, 90, 180, 365]) ...[
+                              for (final d in [30, 60, 90]) ...[
                                 Padding(
                                   padding: const EdgeInsets.only(right: 6),
                                   child: ChoiceChip(
