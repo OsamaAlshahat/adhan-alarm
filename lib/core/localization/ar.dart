@@ -83,7 +83,6 @@ const arCities = <String, String>{
 const arStrings = <String, String>{
   // General & Navigation
   'Mee3ad': 'ميعاد',
-  'Awan': 'ميعاد',
   'Alarms': 'المنبهات',
   'Settings': 'الإعدادات',
   'Alarm': 'منبه',

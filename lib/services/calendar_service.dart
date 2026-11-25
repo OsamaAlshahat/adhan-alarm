@@ -291,7 +291,7 @@ class CalendarService {
         }
       }
 
-      // 4. Clean up any orphan events in the calendar that carry this alarm's tag [awan_id:ID]
+      // 4. Clean up any orphan events in the calendar that carry this alarm's tag [mee3ad_id:ID]
       // but are not in activeEventIds (e.g. left behind by previous un-synced edits)
       try {
         final searchStart = now.subtract(const Duration(days: 2));
@@ -302,8 +302,7 @@ class CalendarService {
         );
         if (ret.isSuccess && ret.data != null) {
           for (final ev in ret.data!) {
-            if (ev.description?.contains('[mee3ad_id:${alarm.id}]') == true ||
-                ev.description?.contains('[awan_id:${alarm.id}]') == true) {
+            if (ev.description?.contains('[mee3ad_id:${alarm.id}]') == true) {
               if (ev.eventId != null && !activeEventIds.contains(ev.eventId)) {
                 await deleteEvent(calId, ev.eventId!);
               }
@@ -350,8 +349,7 @@ class CalendarService {
           );
           if (ret.isSuccess && ret.data != null) {
             for (final ev in ret.data!) {
-              if ((ev.description?.contains('[mee3ad_id:${alarm.id}]') == true ||
-                   ev.description?.contains('[awan_id:${alarm.id}]') == true) &&
+              if (ev.description?.contains('[mee3ad_id:${alarm.id}]') == true &&
                   ev.eventId != null) {
                 await deleteEvent(calId, ev.eventId!);
               }

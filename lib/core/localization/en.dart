@@ -30,7 +30,6 @@ const enMethods = <String, String>{
 const enStrings = <String, String>{
   // General & Navigation
   'Mee3ad': 'Mee3ad',
-  'Awan': 'Mee3ad',
   'Alarms': 'Alarms',
   'Settings': 'Settings',
   'Alarm': 'Alarm',
