@@ -28,7 +28,10 @@ Future<void> showAlarmEditSheet(
     id: (alarms.isEmpty ? 0 : alarms.map((x) => x.id).reduce(max)) + 1,
     prayer: true,
     calDuration: 0,
+    calHorizonDays: 30,
+    calRolling: false,
   );
+  e.calHorizonDays ??= 30;
   final lbl = TextEditingController(text: e.label);
   int offsetHours = e.mins ~/ 60;
   int offsetMinutes = e.mins % 60;
@@ -652,153 +655,122 @@ Future<void> showAlarmEditSheet(
                         Tr.t(ctx, 'Schedule ahead for', 'إضافة للتقويم مسبقاً لمدة'),
                         style: Theme.of(ctx).textTheme.titleSmall,
                       ),
-                      const SizedBox(height: 6),
-                      SegmentedButton<bool>(
-                        segments: [
-                          ButtonSegment(
-                            value: false,
-                            label: Text(
-                              '${Tr.t(ctx, "App default", "الافتراضي العام")} (${st.calendarHorizonDays} ${Tr.t(ctx, "days", "يوم")})',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                          ButtonSegment(
-                            value: true,
-                            label: Text(
-                              Tr.t(ctx, 'Custom days', 'تحديد مخصص'),
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        ],
-                        selected: {e.calHorizonDays != null},
-                        onSelectionChanged: (s) {
-                          set(() {
-                            if (s.first) {
-                              e.calHorizonDays = e.calHorizonDays ?? st.calendarHorizonDays;
-                            } else {
-                              e.calHorizonDays = null;
-                            }
-                          });
-                        },
-                      ),
-                      if (e.calHorizonDays != null) ...[
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.5)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                Tr.t(ctx, 'Days ahead', 'عدد الأيام مسبقاً'),
-                                style: Theme.of(ctx).textTheme.labelLarge,
-                              ),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  HoldableIconButton(
-                                    icon: const Icon(Icons.remove, size: 18),
-                                    onPressed: (e.calHorizonDays ?? st.calendarHorizonDays) > 1
-                                        ? () => set(() {
-                                            final cur = e.calHorizonDays ?? st.calendarHorizonDays;
-                                            if (cur > 1) e.calHorizonDays = cur - 1;
-                                          })
-                                        : null,
-                                  ),
-                                  InkWell(
-                                    borderRadius: BorderRadius.circular(8),
-                                    onTap: () async {
-                                      final val = await showNumberInputDialog(
-                                        ctx,
-                                        title: Tr.t(ctx, 'Schedule ahead for (days)', 'إضافة للتقويم مسبقاً لمدة (أيام)'),
-                                        current: e.calHorizonDays ?? st.calendarHorizonDays,
-                                        min: 1,
-                                        max: 365,
-                                      );
-                                      if (val != null) set(() => e.calHorizonDays = val);
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                                      child: Text(
-                                        '${e.calHorizonDays ?? st.calendarHorizonDays} ${Tr.t(ctx, "days", "يوم")}',
-                                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                  ),
-                                  HoldableIconButton(
-                                    icon: const Icon(Icons.add, size: 18),
-                                    onPressed: (e.calHorizonDays ?? st.calendarHorizonDays) < 365
-                                        ? () => set(() {
-                                            final cur = e.calHorizonDays ?? st.calendarHorizonDays;
-                                            if (cur < 365) e.calHorizonDays = cur + 1;
-                                          })
-                                        : null,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.5)),
                         ),
-                        const SizedBox(height: 6),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              for (final d in [30, 60, 90]) ...[
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: ChoiceChip(
-                                    label: Text('$d ${Tr.t(ctx, "days", "يوم")}'),
-                                    selected: e.calHorizonDays == d,
-                                    onSelected: (sel) {
-                                      if (sel) set(() => e.calHorizonDays = d);
-                                    },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              Tr.t(ctx, 'Days ahead', 'عدد الأيام مسبقاً'),
+                              style: Theme.of(ctx).textTheme.labelLarge,
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                HoldableIconButton(
+                                  icon: const Icon(Icons.remove, size: 18),
+                                  onPressed: (e.calHorizonDays ?? 30) > 1
+                                      ? () => set(() {
+                                          final cur = e.calHorizonDays ?? 30;
+                                          if (cur > 1) e.calHorizonDays = cur - 1;
+                                        })
+                                      : null,
+                                ),
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(8),
+                                  onTap: () async {
+                                    final val = await showNumberInputDialog(
+                                      ctx,
+                                      title: Tr.t(ctx, 'Schedule ahead for (days)', 'إضافة للتقويم مسبقاً لمدة (أيام)'),
+                                      current: e.calHorizonDays ?? 30,
+                                      min: 1,
+                                      max: 365,
+                                    );
+                                    if (val != null) set(() => e.calHorizonDays = val);
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                    child: Text(
+                                      '${e.calHorizonDays ?? 30} ${Tr.t(ctx, "days", "يوم")}',
+                                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                    ),
                                   ),
                                 ),
+                                HoldableIconButton(
+                                  icon: const Icon(Icons.add, size: 18),
+                                  onPressed: (e.calHorizonDays ?? 30) < 365
+                                      ? () => set(() {
+                                          final cur = e.calHorizonDays ?? 30;
+                                          if (cur < 365) e.calHorizonDays = cur + 1;
+                                        })
+                                      : null,
+                                ),
                               ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Card(
-                          margin: EdgeInsets.zero,
-                          color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.35),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.4)),
-                          ),
-                          child: CheckboxListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                            value: e.calRolling,
-                            onChanged: (v) => set(() => e.calRolling = v ?? false),
-                            title: Text(
-                              Tr.t(ctx, 'Keep calendar updated continuously', 'تحديث نافذة التقويم باستمرار'),
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                             ),
-                            subtitle: Text(
-                              e.calRolling
-                                  ? Tr.t(
-                                      ctx,
-                                      'Always keeps upcoming events ahead in your calendar as days pass (rolling window).',
-                                      'يحافظ دائماً على وجود الأحداث القادمة في التقويم كل يوم مع تقدم الأيام (أفق متجدد).',
-                                    )
-                                  : Tr.t(
-                                      ctx,
-                                      'One-time schedule: Only adds the upcoming days once without continuously extending them.',
-                                      'جدولة لمرة واحدة: يضيف الأحداث للمدة المحددة لمرة واحدة فقط دون تمديدها تلقائياً مع مرور الأيام.',
-                                    ),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final d in [30, 60, 90]) ...[
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: ChoiceChip(
+                                  label: Text('$d ${Tr.t(ctx, "days", "يوم")}'),
+                                  selected: (e.calHorizonDays ?? 30) == d,
+                                  onSelected: (sel) {
+                                    if (sel) set(() => e.calHorizonDays = d);
+                                  },
+                                ),
                               ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Card(
+                        margin: EdgeInsets.zero,
+                        color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.35),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.4)),
+                        ),
+                        child: CheckboxListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                          value: e.calRolling,
+                          onChanged: (v) => set(() => e.calRolling = v ?? false),
+                          title: Text(
+                            Tr.t(ctx, 'Keep calendar updated continuously', 'تحديث نافذة التقويم باستمرار'),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            e.calRolling
+                                ? Tr.t(
+                                    ctx,
+                                    'Always keeps upcoming events ahead in your calendar as days pass (rolling window).',
+                                    'يحافظ دائماً على وجود الأحداث القادمة في التقويم كل يوم مع تقدم الأيام (أفق متجدد).',
+                                  )
+                                : Tr.t(
+                                    ctx,
+                                    'One-time schedule: Only adds the upcoming days once without continuously extending them.',
+                                    'جدولة لمرة واحدة: يضيف الأحداث للمدة المحددة لمرة واحدة فقط دون تمديدها تلقائياً مع مرور الأيام.',
+                                  ),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
-                      ],
+                      ),
                     ],
                     const SizedBox(height: 10),
                     if (availableCalendars != null && availableCalendars.isNotEmpty) ...[
