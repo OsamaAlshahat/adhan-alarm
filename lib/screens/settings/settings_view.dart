@@ -9,6 +9,8 @@ import '../../core/utils/platform_utils.dart';
 import '../../services/alarm_service.dart';
 import '../../services/calendar_service.dart';
 import '../../services/storage_service.dart';
+import '../../widgets/holdable_icon_button.dart';
+import '../../widgets/number_input_dialog.dart';
 
 class SettingsView extends StatefulWidget {
   final List<dc.Calendar>? availableCalendars;
@@ -418,52 +420,117 @@ class _SettingsViewState extends State<SettingsView> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    value: [14, 30, 60, 90, 180, 365].contains(st.calendarHorizonDays)
-                        ? st.calendarHorizonDays
-                        : 30,
-                    decoration: InputDecoration(
-                      labelText: Tr.t(context, 'Schedule ahead for (default)', 'إضافة للتقويم مسبقاً لمدة (افتراضي)'),
-                      prefixIcon: const Icon(Icons.date_range),
-                      helperText: Tr.t(
-                        context,
-                        'Default period to precalculate events for calendar alarms',
-                        'الفترة الافتراضية لحساب وإضافة الأحداث للتقويم مسبقاً',
-                      ),
-                      helperMaxLines: 2,
+                  Text(
+                    Tr.t(context, 'Schedule ahead for (default)', 'إضافة للتقويم مسبقاً لمدة (افتراضي)'),
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    Tr.t(
+                      context,
+                      'Default period to precalculate events for calendar alarms',
+                      'الفترة الافتراضية لحساب وإضافة الأحداث للتقويم مسبقاً',
                     ),
-                    items: [
-                      DropdownMenuItem(
-                        value: 14,
-                        child: Text(Tr.t(context, '14 days (2 weeks)', '14 يوماً (أسبوعان)')),
-                      ),
-                      DropdownMenuItem(
-                        value: 30,
-                        child: Text(Tr.t(context, '30 days (1 month)', '30 يوماً (شهر)')),
-                      ),
-                      DropdownMenuItem(
-                        value: 60,
-                        child: Text(Tr.t(context, '60 days (2 months)', '60 يوماً (شهران)')),
-                      ),
-                      DropdownMenuItem(
-                        value: 90,
-                        child: Text(Tr.t(context, '90 days (3 months)', '90 يوماً (3 أشهر)')),
-                      ),
-                      DropdownMenuItem(
-                        value: 180,
-                        child: Text(Tr.t(context, '180 days (6 months)', '180 يوماً (6 أشهر)')),
-                      ),
-                      DropdownMenuItem(
-                        value: 365,
-                        child: Text(Tr.t(context, '365 days (1 year)', '365 يوماً (سنة كاملة)')),
-                      ),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() { st.calendarHorizonDays = v; });
-                      save();
-                      syncAllCalendarEvents();
-                    },
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          Tr.t(context, 'Days ahead', 'عدد الأيام مسبقاً'),
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            HoldableIconButton(
+                              icon: const Icon(Icons.remove, size: 18),
+                              onPressed: st.calendarHorizonDays > 1
+                                  ? () {
+                                      setState(() {
+                                        st.calendarHorizonDays--;
+                                      });
+                                      save();
+                                      syncAllCalendarEvents();
+                                    }
+                                  : null,
+                            ),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () async {
+                                final val = await showNumberInputDialog(
+                                  context,
+                                  title: Tr.t(context, 'Schedule ahead for (days)', 'إضافة للتقويم مسبقاً لمدة (أيام)'),
+                                  current: st.calendarHorizonDays,
+                                  min: 1,
+                                  max: 365,
+                                );
+                                if (val != null) {
+                                  setState(() {
+                                    st.calendarHorizonDays = val;
+                                  });
+                                  save();
+                                  syncAllCalendarEvents();
+                                }
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                child: Text(
+                                  '${st.calendarHorizonDays} ${Tr.t(context, "days", "يوم")}',
+                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                            HoldableIconButton(
+                              icon: const Icon(Icons.add, size: 18),
+                              onPressed: st.calendarHorizonDays < 365
+                                  ? () {
+                                      setState(() {
+                                        st.calendarHorizonDays++;
+                                      });
+                                      save();
+                                      syncAllCalendarEvents();
+                                    }
+                                  : null,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final d in [7, 14, 30, 60, 90, 180, 365]) ...[
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text('$d ${Tr.t(context, "days", "يوم")}'),
+                              selected: st.calendarHorizonDays == d,
+                              onSelected: (sel) {
+                                if (sel) {
+                                  setState(() {
+                                    st.calendarHorizonDays = d;
+                                  });
+                                  save();
+                                  syncAllCalendarEvents();
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ],
               ],

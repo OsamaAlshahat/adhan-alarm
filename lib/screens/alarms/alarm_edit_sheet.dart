@@ -15,6 +15,7 @@ import '../../services/calendar_service.dart';
 import '../../services/location_service.dart';
 import '../../services/storage_service.dart';
 import '../../widgets/holdable_icon_button.dart';
+import '../../widgets/number_input_dialog.dart';
 
 Future<void> showAlarmEditSheet(
   BuildContext context, {
@@ -47,34 +48,6 @@ Future<void> showAlarmEditSheet(
       alarm.soundPath = dest;
       alarm.soundName = f.name;
     });
-  }
-
-  Future<int?> showNumberInputDialog(BuildContext ctx, {required String title, required int current, required int max}) async {
-    final controller = TextEditingController(text: '$current');
-    return showDialog<int>(
-      context: ctx,
-      builder: (dCtx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(hintText: '0 - $max'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dCtx), child: Text(Tr.t(dCtx, 'Cancel', 'إلغاء'))),
-          FilledButton(
-            onPressed: () {
-              final val = int.tryParse(controller.text);
-              if (val != null && val >= 0 && val <= max) {
-                Navigator.pop(dCtx, val);
-              }
-            },
-            child: Text(Tr.t(dCtx, 'OK', 'موافق')),
-          ),
-        ],
-      ),
-    );
   }
 
   return showModalBottomSheet(
@@ -643,55 +616,155 @@ Future<void> showAlarmEditSheet(
                     ),
 
                     // Schedule ahead for (Calendar horizon per alarm)
-                    const SizedBox(height: 4),
-                    DropdownButtonFormField<int?>(
-                      value: e.calHorizonDays,
-                      decoration: InputDecoration(
-                        labelText: Tr.t(ctx, 'Schedule ahead for', 'إضافة للتقويم مسبقاً لمدة'),
-                        prefixIcon: const Icon(Icons.date_range),
-                        helperText: Tr.t(
-                          ctx,
-                          'Precalculates prayer times for this period in your calendar',
-                          'يقوم بحساب مواقيت الصلاة مسبقاً وتدوينها في التقويم لهذه المدة',
+                    if (e.repeatMode == 'once') ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.5)),
                         ),
-                        helperMaxLines: 2,
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 20, color: Theme.of(ctx).colorScheme.primary),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                Tr.t(
+                                  ctx,
+                                  'One-time alarm: A single event will be added to the calendar for this alarm date.',
+                                  'منبه لمرة واحدة: سيتم إنشاء حدث واحد فقط في التقويم في موعد هذا المنبه.',
+                                ),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      items: [
-                        DropdownMenuItem<int?>(
-                          value: null,
-                          child: Text(Tr.t(
-                            ctx,
-                            'App default (${st.calendarHorizonDays} days)',
-                            'الافتراضي العام (${st.calendarHorizonDays} يوماً)',
-                          )),
+                    ] else ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        Tr.t(ctx, 'Schedule ahead for', 'إضافة للتقويم مسبقاً لمدة'),
+                        style: Theme.of(ctx).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 6),
+                      SegmentedButton<bool>(
+                        segments: [
+                          ButtonSegment(
+                            value: false,
+                            label: Text(
+                              '${Tr.t(ctx, "App default", "الافتراضي العام")} (${st.calendarHorizonDays} ${Tr.t(ctx, "days", "يوم")})',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            label: Text(
+                              Tr.t(ctx, 'Custom days', 'تحديد مخصص'),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
+                        selected: {e.calHorizonDays != null},
+                        onSelectionChanged: (s) {
+                          set(() {
+                            if (s.first) {
+                              e.calHorizonDays = e.calHorizonDays ?? st.calendarHorizonDays;
+                            } else {
+                              e.calHorizonDays = null;
+                            }
+                          });
+                        },
+                      ),
+                      if (e.calHorizonDays != null) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.5)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                Tr.t(ctx, 'Days ahead', 'عدد الأيام مسبقاً'),
+                                style: Theme.of(ctx).textTheme.labelLarge,
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  HoldableIconButton(
+                                    icon: const Icon(Icons.remove, size: 18),
+                                    onPressed: (e.calHorizonDays ?? st.calendarHorizonDays) > 1
+                                        ? () => set(() {
+                                            final cur = e.calHorizonDays ?? st.calendarHorizonDays;
+                                            if (cur > 1) e.calHorizonDays = cur - 1;
+                                          })
+                                        : null,
+                                  ),
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: () async {
+                                      final val = await showNumberInputDialog(
+                                        ctx,
+                                        title: Tr.t(ctx, 'Schedule ahead for (days)', 'إضافة للتقويم مسبقاً لمدة (أيام)'),
+                                        current: e.calHorizonDays ?? st.calendarHorizonDays,
+                                        min: 1,
+                                        max: 365,
+                                      );
+                                      if (val != null) set(() => e.calHorizonDays = val);
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                      child: Text(
+                                        '${e.calHorizonDays ?? st.calendarHorizonDays} ${Tr.t(ctx, "days", "يوم")}',
+                                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ),
+                                  HoldableIconButton(
+                                    icon: const Icon(Icons.add, size: 18),
+                                    onPressed: (e.calHorizonDays ?? st.calendarHorizonDays) < 365
+                                        ? () => set(() {
+                                            final cur = e.calHorizonDays ?? st.calendarHorizonDays;
+                                            if (cur < 365) e.calHorizonDays = cur + 1;
+                                          })
+                                        : null,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                        DropdownMenuItem<int?>(
-                          value: 14,
-                          child: Text(Tr.t(ctx, '14 days (2 weeks)', '14 يوماً (أسبوعان)')),
-                        ),
-                        DropdownMenuItem<int?>(
-                          value: 30,
-                          child: Text(Tr.t(ctx, '30 days (1 month)', '30 يوماً (شهر)')),
-                        ),
-                        DropdownMenuItem<int?>(
-                          value: 60,
-                          child: Text(Tr.t(ctx, '60 days (2 months)', '60 يوماً (شهران)')),
-                        ),
-                        DropdownMenuItem<int?>(
-                          value: 90,
-                          child: Text(Tr.t(ctx, '90 days (3 months)', '90 يوماً (3 أشهر)')),
-                        ),
-                        DropdownMenuItem<int?>(
-                          value: 180,
-                          child: Text(Tr.t(ctx, '180 days (6 months)', '180 يوماً (6 أشهر)')),
-                        ),
-                        DropdownMenuItem<int?>(
-                          value: 365,
-                          child: Text(Tr.t(ctx, '365 days (1 year)', '365 يوماً (سنة كاملة)')),
+                        const SizedBox(height: 6),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              for (final d in [7, 14, 30, 60, 90, 180, 365]) ...[
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: ChoiceChip(
+                                    label: Text('$d ${Tr.t(ctx, "days", "يوم")}'),
+                                    selected: e.calHorizonDays == d,
+                                    onSelected: (sel) {
+                                      if (sel) set(() => e.calHorizonDays = d);
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                       ],
-                      onChanged: (v) => set(() => e.calHorizonDays = v),
-                    ),
+                    ],
                     const SizedBox(height: 10),
                     if (availableCalendars != null && availableCalendars.isNotEmpty) ...[
                       DropdownButtonFormField<String>(
