@@ -212,14 +212,32 @@ class CalendarService {
   }
 
   /// Sync an alarm's occurrences to the device calendar
-  static Future<void> syncAlarmToCalendar(Al alarm, {String? oldCalendarId}) async {
+  static Future<void> syncAlarmToCalendar(Al alarm, {String? oldCalendarId, bool isUserEdit = false}) async {
     try {
       final calId = await effectiveCalendarId(alarm);
       if (calId == null) return;
 
       final now = DateTime.now();
       final horizonDays = alarm.calHorizonDays ?? st.calendarHorizonDays;
-      final daysToSync = alarm.repeatMode == 'once' ? 1 : horizonDays;
+      int daysToSync;
+
+      if (alarm.repeatMode == 'once') {
+        daysToSync = 1;
+        alarm.calEndDate = null;
+      } else if (alarm.calRolling) {
+        // Continuous rolling window: always keep upcoming horizonDays ahead
+        daysToSync = horizonDays;
+        alarm.calEndDate = null;
+      } else {
+        // Fixed one-time range (not updated continuously)
+        final today = DateTime(now.year, now.month, now.day);
+        if (isUserEdit || alarm.calEndDate == null) {
+          alarm.calEndDate = today.add(Duration(days: horizonDays));
+        }
+        final remaining = alarm.calEndDate!.difference(today).inDays;
+        daysToSync = remaining > 0 ? remaining : 0;
+      }
+
       final title = alarm.label.isNotEmpty
           ? alarm.label
           : (alarm.prayer ? '${alarm.mins == 0 ? "موعد صلاة" : "${alarm.mins} دقيقة"} ${alarm.p}' : 'منبه ميعاد');
@@ -249,8 +267,8 @@ class CalendarService {
           continue;
         }
 
-        final dayKey = 'day_$i';
-        final existingEventId = alarm.calEventIds[dayKey];
+        final dayKey = '${targetDate.year}_${targetDate.month.toString().padLeft(2, '0')}_${targetDate.day.toString().padLeft(2, '0')}';
+        final existingEventId = alarm.calEventIds[dayKey] ?? alarm.calEventIds['day_$i'];
 
         // Try to update existing event in-place first (prevents duplicates entirely!)
         String? eventId;
@@ -287,7 +305,10 @@ class CalendarService {
       // 3. Delete any previously tracked events that are no longer part of the new schedule
       for (final entry in alarm.calEventIds.entries) {
         if (!newCalEventIds.containsKey(entry.key)) {
-          await deleteEvent(calId, entry.value);
+          // If the key was a legacy day_N key or a date beyond the new horizon, delete it
+          if (entry.key.startsWith('day_') || !newCalEventIds.containsValue(entry.value)) {
+            await deleteEvent(calId, entry.value);
+          }
         }
       }
 

@@ -21,6 +21,8 @@ class Al {
   String? calendarId;         // per-alarm override; null = use app default
   int calDuration;            // duration in minutes for calendar events (default: 0)
   int? calHorizonDays;        // per-alarm horizon in days; null = use app default
+  bool calRolling;            // false = one-time fixed range (default); true = continuously rolling window
+  DateTime? calEndDate;       // fixed end date when calRolling is false
   Map<String, String> calEventIds; // key: "dayOffset_N", value: calendar eventId
 
   Al({
@@ -43,6 +45,8 @@ class Al {
     this.calendarId,
     this.calDuration = 0,
     this.calHorizonDays,
+    this.calRolling = false,
+    this.calEndDate,
     Map<String, String>? calEventIds,
   }) : days = days ?? [DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday],
        calEventIds = calEventIds ?? {};
@@ -70,6 +74,8 @@ class Al {
     'calendarId': calendarId,
     'calDuration': calDuration,
     'calHorizonDays': calHorizonDays,
+    'calRolling': calRolling,
+    'calEndDate': calEndDate?.toIso8601String(),
     'calEventIds': calEventIds,
   };
 
@@ -100,6 +106,8 @@ class Al {
       calendarId: j['calendarId'],
       calDuration: (j['calDuration'] as num?)?.toInt() ?? 0,
       calHorizonDays: (j['calHorizonDays'] as num?)?.toInt(),
+      calRolling: j['calRolling'] ?? false,
+      calEndDate: j['calEndDate'] != null ? DateTime.tryParse(j['calEndDate']) : null,
       calEventIds: (j['calEventIds'] as Map<String, dynamic>?)?.map((k, v) => MapEntry(k, v.toString())) ?? {},
     );
   }

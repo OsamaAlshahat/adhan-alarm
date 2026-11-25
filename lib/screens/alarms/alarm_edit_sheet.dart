@@ -763,6 +763,41 @@ Future<void> showAlarmEditSheet(
                             ],
                           ),
                         ),
+                        const SizedBox(height: 10),
+                        Card(
+                          margin: EdgeInsets.zero,
+                          color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.35),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.4)),
+                          ),
+                          child: CheckboxListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                            value: e.calRolling,
+                            onChanged: (v) => set(() => e.calRolling = v ?? false),
+                            title: Text(
+                              Tr.t(ctx, 'Keep calendar updated continuously', 'تحديث نافذة التقويم باستمرار'),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              e.calRolling
+                                  ? Tr.t(
+                                      ctx,
+                                      'Always keeps upcoming events ahead in your calendar as days pass (rolling window).',
+                                      'يحافظ دائماً على وجود الأحداث القادمة في التقويم كل يوم مع تقدم الأيام (أفق متجدد).',
+                                    )
+                                  : Tr.t(
+                                      ctx,
+                                      'One-time schedule: Only adds the upcoming days once without continuously extending them.',
+                                      'جدولة لمرة واحدة: يضيف الأحداث للمدة المحددة لمرة واحدة فقط دون تمديدها تلقائياً مع مرور الأيام.',
+                                    ),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ],
                     const SizedBox(height: 10),
@@ -877,7 +912,7 @@ Future<void> showAlarmEditSheet(
                               await reschedule();
                               // Sync calendar events
                               if (e.addToCalendar) {
-                                CalendarService.syncAlarmToCalendar(e, oldCalendarId: oldCalendarId).then((_) => save());
+                                CalendarService.syncAlarmToCalendar(e, oldCalendarId: oldCalendarId, isUserEdit: true).then((_) => save());
                               } else if (wasInCalendar || e.calEventIds.isNotEmpty) {
                                 CalendarService.removeAlarmFromCalendar(e).then((_) => save());
                               }
