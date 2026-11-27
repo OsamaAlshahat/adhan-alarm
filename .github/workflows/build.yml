@@ -1,6 +1,9 @@
 name: Build App (Android & iOS)
 on: workflow_dispatch
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     name: Build Android APK
@@ -11,6 +14,29 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Setup persistent Android signing keystore
+        run: |
+          mkdir -p ~/.android .github/signing
+          KEYSTORE_FILE="$GITHUB_WORKSPACE/.github/signing/app-release.keystore"
+          if [ ! -f "$KEYSTORE_FILE" ]; then
+            echo "Generating permanent Android signing keystore..."
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE_FILE" \
+              -alias androiddebugkey \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass android \
+              -keypass android \
+              -dname "CN=Mee3ad, OU=Mobile, O=Mee3ad, L=Cairo, ST=Cairo, C=EG"
+
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add "$KEYSTORE_FILE"
+            git commit -m "chore: persist permanent Android signing keystore for seamless app updates" || true
+            git push origin main || true
+          fi
+          cp "$KEYSTORE_FILE" ~/.android/debug.keystore
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
